@@ -1,0 +1,34 @@
+{
+  "120363409756031141@g.us": {
+    "2026-07-29": {
+      "total": 1,
+      "users": {
+        "66821625733@s.whatsapp.net": 1
+      },
+      "hours": {
+        "3": 1
+      },
+      "night": {
+        "66821625733@s.whatsapp.net": 1
+      },
+      "mentioned": {},
+      "stickers": {}
+    }
+  },
+  "120363428302185943@g.us": {
+    "2026-07-29": {
+      "total": 10,
+      "users": {
+        "66821625733@s.whatsapp.net": 10
+      },
+      "hours": {
+        "3": 10
+      },
+      "night": {
+        "66821625733@s.whatsapp.net": 10
+      },
+      "mentioned": {},
+      "stickers": {}
+    }
+  }
+}

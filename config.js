@@ -5,11 +5,11 @@
 module.exports = {
     // Bot Owner Configuration
     ownerNumber: ['66821625733'], // Add your number without + or spaces (e.g., 919876543210)
-    ownerName: ['@tkoda/CoderKoda'], // Owner names corresponding to ownerNumber array
+    ownerName: ['CoderKoda'], // Owner names corresponding to ownerNumber array
     
     // Bot Configuration
     botName: '>_ Terminal',
-    prefix: '.',
+    prefix: '/',
     sessionName: 'session',
     sessionID: process.env.SESSION_ID || '',
     newsletterJid: '120363411619820071@newsletter', // Newsletter JID for menu forwarding
