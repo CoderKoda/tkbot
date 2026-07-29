@@ -118,7 +118,7 @@ async function showOverview(sock, msg, extra, commands) {
   menuText += `━━━ ❰ *CATEGORIES* ❱ ━━━\n\n`;
   
   // Sort categories: owner first, then general, then alphabetical
-  const categoryOrder = ['owner', 'general', 'admin', 'ai', 'fun', 'media', 'textmaker', 'utility', 'economy', 'anime', 'group'];
+  const categoryOrder = ['sudo', 'general', 'admin', 'ai', 'fun', 'media', 'textmaker', 'utility', 'economy', 'anime', 'group'];
   const sortedCategories = categoryOrder.filter(cat => categories[cat]);
   const remainingCats = Object.keys(categories).filter(cat => !categoryOrder.includes(cat)).sort();
   const allCats = [...sortedCategories, ...remainingCats];
