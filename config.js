@@ -4,19 +4,19 @@
 
 module.exports = {
     // Bot Owner Configuration
-    ownerNumber: ['9876543210'], // Add your number without + or spaces (e.g., 919876543210)
-    ownerName: ['Knight Bot'], // Owner names corresponding to ownerNumber array
+    ownerNumber: ['66821625733'], // Add your number without + or spaces (e.g., 919876543210)
+    ownerName: ['@tkoda/CoderKoda'], // Owner names corresponding to ownerNumber array
     
     // Bot Configuration
-    botName: 'Knight Bot Mini',
-    prefix: ',',
+    botName: '>_ Terminal',
+    prefix: '.',
     sessionName: 'session',
     sessionID: process.env.SESSION_ID || '',
-    newsletterJid: '120363161513685998@newsletter', // Newsletter JID for menu forwarding
+    newsletterJid: '120363411619820071@newsletter', // Newsletter JID for menu forwarding
     updateZipUrl: 'https://github.com/mruniquehacker/KnightBot-Mini/archive/refs/heads/main.zip', // URL to latest code zip for .update command
     
     // Sticker Configuration
-    packname: 'Knight Bot',
+    packname: '>_ Terminal',
     
     // Bot Behavior
     selfMode: false, // Private mode - only owner can use commands
@@ -72,7 +72,7 @@ module.exports = {
       wait: '⏳ Please wait...',
       success: '✅ Success!',
       error: '❌ Error occurred!',
-      ownerOnly: '👑 This command is only for bot owner!',
+      ownerOnly: '👑 This command is only for community admins!',
       adminOnly: '🛡️ This command is only for group admins!',
       groupOnly: '👥 This command can only be used in groups!',
       privateOnly: '💬 This command can only be used in private chat!',

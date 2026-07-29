@@ -83,7 +83,7 @@ module.exports = {
       // Owner Commands
       if (categories.owner) {
         menuText += `┏━━━━━━━━━━━━━━━━━\n`;
-        menuText += `┃ 👑 OWNER COMMAND\n`;
+        menuText += `┃ 👑 C.AD. COMMAND\n`;
         menuText += `┗━━━━━━━━━━━━━━━━━\n`;
         categories.owner.forEach(cmd => {
           menuText += `│ ➜ ${config.prefix}${cmd.name}\n`;
@@ -182,7 +182,7 @@ module.exports = {
             forwardingScore: 1,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
-              newsletterJid: config.newsletterJid || '120363161513685998@newsletter',
+              newsletterJid: config.newsletterJid || '120363411619820071@newsletter',
               newsletterName: config.botName,
               serverMessageId: -1
             }
