@@ -4,7 +4,7 @@ const guessGames = new Map();
 const hangmanGames = new Map();
 const quizGames = new Map();
 
-const HANGMAN_WORDS = ['baileys', 'whatsapp', 'knight', 'bot', 'meme', 'group', 'status', 'tiktok', 'roast', 'legend'];
+const HANGMAN_WORDS = ['python', 'markup', 'html', 'language', 'developer', 'coding', 'programmer', 'javascript', 'error', 'debugging'];
 const QUIZ = [
   { q: 'Capital of India?', opts: ['Mumbai', 'Delhi', 'Kolkata', 'Chennai'], a: 1 },
   { q: '2 + 2 × 2 = ?', opts: ['6', '8', '4', '10'], a: 0 },

@@ -1,20 +1,20 @@
 const MULTIPLIER = 1;
 
 const ROLES = [
-  { min: 1, name: 'Newbie' },
-  { min: 5, name: 'Rookie' },
-  { min: 10, name: 'Scout' },
-  { min: 15, name: 'Adventurer' },
-  { min: 20, name: 'Warrior' },
-  { min: 25, name: 'Knight' },
-  { min: 30, name: 'Champion' },
-  { min: 40, name: 'Elite' },
-  { min: 50, name: 'Master' },
-  { min: 60, name: 'Grandmaster' },
-  { min: 70, name: 'Legend' },
-  { min: 80, name: 'Mythic' },
-  { min: 90, name: 'Immortal' },
-  { min: 100, name: 'Deity' },
+  { min: 1, name: 'User' },
+  { min: 5, name: 'Computational Thinker' },
+  { min: 10, name: 'Block Coder' },
+  { min: 15, name: 'Python Pro' },
+  { min: 20, name: 'Web Developer' },
+  { min: 25, name: 'C-Style Noob' },
+  { min: 30, name: 'C-Style Pro' },
+  { min: 40, name: 'Website Owner' },
+  { min: 50, name: 'App Developer' },
+  { min: 60, name: 'App Owner' },
+  { min: 70, name: 'Language Creator' },
+  { min: 80, name: 'Company Executive' },
+  { min: 90, name: 'Company Owner' },
+  { min: 100, name: 'Ultimate Developer' },
 ];
 
 function xpForLevel(level, multiplier = MULTIPLIER) {
