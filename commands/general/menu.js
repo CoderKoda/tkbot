@@ -33,7 +33,7 @@ const CATEGORY_NAMES = {
   ai: 'AI',
   fun: 'FUN',
   media: 'MEDIA',
-  owner: 'SUDO',
+  owner: 'SUDOCMDS',
   textmaker: 'TEXTMAKER',
   utility: 'UTILITY',
   economy: 'ECONOMY',
@@ -45,7 +45,7 @@ module.exports = {
   name: 'menu',
   aliases: [
     'help', 'commands',
-    'general', 'admin', 'ai', 'fun', 'media', 'sudo', 'textmaker', 'utility',
+    'general', 'admin', 'ai', 'fun', 'media', 'sudocmds', 'textmaker', 'utility',
     'group', 'economy', 'anime'
   ],
   category: 'general',
@@ -118,7 +118,7 @@ async function showOverview(sock, msg, extra, commands) {
   menuText += `━━━ ❰ *CATEGORIES* ❱ ━━━\n\n`;
   
   // Sort categories: owner first, then general, then alphabetical
-  const categoryOrder = ['sudo', 'general', 'admin', 'ai', 'fun', 'media', 'textmaker', 'utility', 'economy', 'anime', 'group'];
+  const categoryOrder = ['sudocmds', 'general', 'admin', 'ai', 'fun', 'media', 'textmaker', 'utility', 'economy', 'anime', 'group'];
   const sortedCategories = categoryOrder.filter(cat => categories[cat]);
   const remainingCats = Object.keys(categories).filter(cat => !categoryOrder.includes(cat)).sort();
   const allCats = [...sortedCategories, ...remainingCats];
@@ -140,7 +140,7 @@ async function showOverview(sock, msg, extra, commands) {
   menuText += `  \`${config.prefix}ai\` — AI commands\n`;
   menuText += `  \`${config.prefix}fun\` — Fun commands\n`;
   menuText += `  \`${config.prefix}media\` — Media commands\n`;
-  menuText += `  \`${config.prefix}sudo\` — sudo User commands\n`;
+  menuText += `  \`${config.prefix}sudocmds\` — sudo User commands\n`;
   menuText += `  \`${config.prefix}textmaker\` — Textmaker commands\n`;
   menuText += `  \`${config.prefix}utility\` — Utility commands\n`;
   menuText += `  \`${config.prefix}help <command>\` — Command details\n\n`;
