@@ -189,6 +189,8 @@ const createSuppressedLogger = (level = 'silent') => {
 // Main connection function
 async function startBot() {
   const sessionFolder = `./${config.sessionName}`;
+  const { initDB } = require("./utils/db");
+  await initDB();
   const sessionFile = path.join(sessionFolder, 'creds.json');
 
   // Check if sessionID is provided and process KnightBot! format session

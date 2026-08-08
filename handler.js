@@ -524,7 +524,7 @@ const handleMessage = async (sock, msg) => {
       // Auto level-up when enough XP (economy ranks)
       if (!msg.key.fromMe) {
         try {
-          const levelResult = tryAutoLevelUp(from, sender);
+          const levelResult = await tryAutoLevelUp(from, sender);
           if (levelResult.leveled) {
             await sock.sendMessage(from, {
               text: formatLevelUpMessage(
