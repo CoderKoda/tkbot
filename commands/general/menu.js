@@ -1,11 +1,9 @@
 /**
  * Menu Command - Display all available commands with category-based navigation
  * Usage:
- *   .menu          - Show category overview
- *   .general       - Show general commands
- *   .admin         - Show admin commands
- *   .menu general  - Also shows general commands
- *   .help          - Same as .menu
+ *   .menu              - Show category overview
+ *   .menu <category>   - Show category commands
+ *   .help              - Same as .menu
  */
 
 const config = require('../../config');
@@ -33,7 +31,7 @@ const CATEGORY_NAMES = {
   ai: 'AI',
   fun: 'FUN',
   media: 'MEDIA',
-  owner: 'SUDOCMDS',
+  owner: 'SUDO',
   textmaker: 'TEXTMAKER',
   utility: 'UTILITY',
   economy: 'ECONOMY',
@@ -41,47 +39,43 @@ const CATEGORY_NAMES = {
   group: 'GROUP'
 };
 
+const CATEGORY_ALIASES = {
+  sudo: 'owner',
+  sudocmds: 'owner',
+  owner: 'owner',
+  general: 'general',
+  admin: 'admin',
+  ai: 'ai',
+  fun: 'fun',
+  media: 'media',
+  textmaker: 'textmaker',
+  utility: 'utility',
+  economy: 'economy',
+  anime: 'anime',
+  group: 'group'
+};
+
 module.exports = {
   name: 'menu',
-  aliases: [
-    'help', 'commands',
-    'general', 'admin', 'ai', 'fun', 'media', 'sudocmds', 'textmaker', 'utility',
-    'group', 'economy', 'anime'
-  ],
+  aliases: ['help', 'commands'],
   category: 'general',
   description: 'Show all available commands organized by category',
-  usage: '.menu | .menu <category> | .<category>',
+  usage: '.menu | .menu <category> | .help',
   
   async execute(sock, msg, args, extra) {
     try {
       const commands = loadCommands();
       
-      // Determine which category was requested
-      // Priority: 1) args[0] as category  2) commandName as alias (e.g., .general)  3) no args = overview
+      // Determine which category was requested by args only
       let requestedCategory = null;
-      
-      // Check if args[0] is a valid category name
-      const validCategories = Object.keys(CATEGORY_ICONS);
       if (args[0] && args[0].toLowerCase()) {
         const argCat = args[0].toLowerCase();
-        if (validCategories.includes(argCat)) {
-          requestedCategory = argCat;
-        }
-      }
-      
-      // If no category from args, check if the command alias itself is a category name
-      if (!requestedCategory && extra.commandName) {
-        const aliasLower = extra.commandName.toLowerCase();
-        if (validCategories.includes(aliasLower) && aliasLower !== 'menu' && aliasLower !== 'help' && aliasLower !== 'commands') {
-          requestedCategory = aliasLower;
-        }
+        requestedCategory = CATEGORY_ALIASES[argCat] || null;
       }
       
       if (requestedCategory) {
-        // Show category-specific commands
         await showCategory(sock, msg, extra, commands, requestedCategory);
       } else {
-        // Show category overview
         await showOverview(sock, msg, extra, commands);
       }
       
@@ -118,31 +112,40 @@ async function showOverview(sock, msg, extra, commands) {
   menuText += `━━━ ❰ *CATEGORIES* ❱ ━━━\n\n`;
   
   // Sort categories: owner first, then general, then alphabetical
-  const categoryOrder = ['sudocmds', 'general', 'admin', 'ai', 'fun', 'media', 'textmaker', 'utility', 'economy', 'anime', 'group'];
+  const categoryOrder = ['owner', 'general', 'admin', 'ai', 'fun', 'media', 'textmaker', 'utility', 'economy', 'anime', 'group'];
   const sortedCategories = categoryOrder.filter(cat => categories[cat]);
   const remainingCats = Object.keys(categories).filter(cat => !categoryOrder.includes(cat)).sort();
   const allCats = [...sortedCategories, ...remainingCats];
   
+  const categoryDisplayName = (cat) => {
+    if (cat === 'owner') return 'sudo';
+    return cat;
+  };
+
   allCats.forEach(cat => {
     const icon = CATEGORY_ICONS[cat] || '📁';
     const displayName = CATEGORY_NAMES[cat] || cat.toUpperCase();
     const count = categories[cat]?.count || 0;
+    const displayCatCommand = categoryDisplayName(cat);
     
-    menuText += `${icon} *${displayName}*  ➜  \`${config.prefix}${cat}\`\n`;
+    menuText += `${icon} *${displayName}*  ➜  \`${config.prefix}menu ${displayCatCommand}\`\n`;
     menuText += `│  📌 ${count} command${count !== 1 ? 's' : ''}\n\n`;
   });
   
   menuText += `━━━━━━━━━━━━━━━━━━\n\n`;
   menuText += `💡 *Usage:*\n`;
   menuText += `  \`${config.prefix}menu\` — Show this menu\n`;
-  menuText += `  \`${config.prefix}general\` — General commands\n`;
-  menuText += `  \`${config.prefix}admin\` — Admin commands\n`;
-  menuText += `  \`${config.prefix}ai\` — AI commands\n`;
-  menuText += `  \`${config.prefix}fun\` — Fun commands\n`;
-  menuText += `  \`${config.prefix}media\` — Media commands\n`;
-  menuText += `  \`${config.prefix}sudocmds\` — sudo User commands\n`;
-  menuText += `  \`${config.prefix}textmaker\` — Textmaker commands\n`;
-  menuText += `  \`${config.prefix}utility\` — Utility commands\n`;
+  menuText += `  \`${config.prefix}menu general\` — General commands\n`;
+  menuText += `  \`${config.prefix}menu admin\` — Admin commands\n`;
+  menuText += `  \`${config.prefix}menu ai\` — AI commands\n`;
+  menuText += `  \`${config.prefix}menu fun\` — Fun commands\n`;
+  menuText += `  \`${config.prefix}menu media\` — Media commands\n`;
+  menuText += `  \`${config.prefix}menu sudo\` — Sudo commands\n`;
+  menuText += `  \`${config.prefix}menu textmaker\` — Textmaker commands\n`;
+  menuText += `  \`${config.prefix}menu utility\` — Utility commands\n`;
+  menuText += `  \`${config.prefix}menu economy\` — Economy commands\n`;
+  menuText += `  \`${config.prefix}menu anime\` — Anime commands\n`;
+  menuText += `  \`${config.prefix}menu group\` — Group commands\n`;
   menuText += `  \`${config.prefix}help <command>\` — Command details\n\n`;
   menuText += `🌟 Bot Version: 1.0.3\n`;
   
