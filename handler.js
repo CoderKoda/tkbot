@@ -19,21 +19,48 @@ const { writeExifImg } = require('./utils/exif');
 const groupMetadataCache = new Map();
 const CACHE_TTL = 60000; // 1 minute cache
 const antiSpamTracker = new Map();
+const antiSpamMessageHistory = new Map();
 
 const getAntiSpamKey = (groupId, sender) => `${groupId}:${sender}`;
 
-const recordAntiSpamMessage = (groupId, sender, windowMs) => {
+const recordAntiSpamMessage = (groupId, sender, msg, windowMs) => {
   const key = getAntiSpamKey(groupId, sender);
   const now = Date.now();
+
   const timestamps = antiSpamTracker.get(key) || [];
-  const fresh = timestamps.filter((ts) => now - ts <= windowMs);
-  fresh.push(now);
-  antiSpamTracker.set(key, fresh);
-  return fresh.length;
+  const freshTimestamps = timestamps.filter((ts) => now - ts <= windowMs);
+  freshTimestamps.push(now);
+  antiSpamTracker.set(key, freshTimestamps);
+
+  const history = antiSpamMessageHistory.get(key) || [];
+  const freshHistory = history.filter((entry) => now - entry.timestamp <= windowMs);
+  freshHistory.push({ timestamp: now, key: msg?.key });
+  antiSpamMessageHistory.set(key, freshHistory);
+
+  return freshTimestamps.length;
 };
 
 const clearAntiSpamRecords = (groupId, sender) => {
   antiSpamTracker.delete(getAntiSpamKey(groupId, sender));
+  antiSpamMessageHistory.delete(getAntiSpamKey(groupId, sender));
+};
+
+const deleteAntiSpamMessages = async (sock, groupId, sender, windowMs) => {
+  const key = getAntiSpamKey(groupId, sender);
+  const history = antiSpamMessageHistory.get(key) || [];
+  const now = Date.now();
+  const freshHistory = history.filter((entry) => now - entry.timestamp <= windowMs);
+  antiSpamMessageHistory.set(key, freshHistory);
+
+  for (const entry of freshHistory) {
+    if (entry.key?.id) {
+      try {
+        await sock.sendMessage(groupId, { delete: entry.key });
+      } catch (error) {
+        // Ignore deletion failures so the warning can still be delivered
+      }
+    }
+  }
 };
 
 const handleAntiSpam = async (sock, msg, groupMetadata, sender, count, threshold, windowSeconds, action) => {
@@ -43,6 +70,8 @@ const handleAntiSpam = async (sock, msg, groupMetadata, sender, count, threshold
 
 @${sender.split('@')[0]} sent ${count} messages within ${windowSeconds} seconds.`;
   const botIsAdmin = await isBotAdmin(sock, from, groupMetadata);
+
+  await deleteAntiSpamMessages(sock, from, sender, windowSeconds * 1000);
 
   if (action === 'kick') {
     if (botIsAdmin) {
@@ -714,7 +743,7 @@ const handleMessage = async (sock, msg) => {
           const threshold = Number(groupSettings.antiSpamThreshold) || 5;
           const windowSeconds = Number(groupSettings.antiSpamWindow) || 10;
           const action = (groupSettings.antiSpamAction || 'warn').toLowerCase();
-          const count = recordAntiSpamMessage(from, sender, windowSeconds * 1000);
+          const count = recordAntiSpamMessage(from, sender, msg, windowSeconds * 1000);
 
           if (count >= threshold) {
             try {

@@ -6,7 +6,7 @@ const database = require('../../database');
 
 module.exports = {
   name: 'resetwarn',
-  aliases: ['resetwarning', 'clearwarn', 'unwarn', 'delwarn'],
+  aliases: ['resetwarning', 'clearwarn', 'clearwarnings', 'unwarn', 'delwarn'],
   category: 'admin',
   description: 'Reset all warnings for a user',
   usage: '.resetwarn @user',
