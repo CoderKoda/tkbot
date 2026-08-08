@@ -1,148 +1,102 @@
 /**
- * Instagram Downloader - Using ruhend-scraper
+ * Instagram Link Finder - share Instagram post links only
  */
 
-const { igdl } = require('ruhend-scraper');
-const config = require('../../config');
+const axios = require('axios');
 
-// Store processed message IDs to prevent duplicates
-const processedMessages = new Set();
+const INSTAGRAM_PATTERNS = [
+  /https?:\/\/(?:www\.)?instagram\.com\//i,
+  /https?:\/\/(?:www\.)?instagr\.am\//i
+];
 
-// Function to extract unique media URLs with simple deduplication
-function extractUniqueMedia(mediaData) {
-  const uniqueMedia = [];
-  const seenUrls = new Set();
-  
-  for (const media of mediaData) {
-    if (!media.url) continue;
-    
-    // Only check for exact URL duplicates
-    if (!seenUrls.has(media.url)) {
-      seenUrls.add(media.url);
-      uniqueMedia.push(media);
+const INSTAGRAM_VIDEO_PATTERNS = [
+  /https?:\/\/(?:www\.)?instagram\.com\/p\/[A-Za-z0-9_-]+/i,
+  /https?:\/\/(?:www\.)?instagram\.com\/reel\/[A-Za-z0-9_-]+/i,
+  /https?:\/\/(?:www\.)?instagram\.com\/tv\/[A-Za-z0-9_-]+/i,
+  /https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.]+\/status\/[0-9]+/i
+];
+
+async function findInstagramUrl(query) {
+  const response = await axios.get('https://html.duckduckgo.com/html/', {
+    params: { q: `site:instagram.com ${query}` },
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    },
+    timeout: 20000
+  });
+
+  const html = response.data;
+  const urls = new Set();
+
+  for (const pattern of [...INSTAGRAM_VIDEO_PATTERNS, ...INSTAGRAM_PATTERNS]) {
+    let match;
+    const regex = new RegExp(pattern.source, 'gim');
+    while ((match = regex.exec(html)) !== null) {
+      urls.add(match[0]);
     }
   }
-  
-  return uniqueMedia;
+
+  return urls.values().next().value || null;
 }
 
-// Function to validate media URL
-function isValidMediaUrl(url) {
-  if (!url || typeof url !== 'string') return false;
-  
-  // Accept any URL that looks like media
-  return url.includes('cdninstagram.com') || 
-         url.includes('instagram') || 
-         url.includes('http');
+async function fetchMetadata(url) {
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        Referer: 'https://www.instagram.com/'
+      },
+      timeout: 20000
+    });
+
+    const html = response.data;
+    const titleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
+    const imageMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+
+    return {
+      title: titleMatch ? titleMatch[1] : null,
+      thumbnail: imageMatch ? imageMatch[1] : null
+    };
+  } catch (error) {
+    return { title: null, thumbnail: null };
+  }
 }
 
 module.exports = {
   name: 'instagram',
   aliases: ['ig', 'insta', 'igdl', 'reels'],
   category: 'media',
-  description: 'Download Instagram photos/videos/reels',
-  usage: '<Instagram URL>',
-  
+  description: 'Search for Instagram posts and share the link only',
+  usage: '.instagram <Instagram link or search query>',
+
   async execute(sock, msg, args, extra) {
-    try {
-      const chatId = extra.from;
-      
-      // Check if message has already been processed
-      if (processedMessages.has(msg.key.id)) {
-        return;
-      }
-      
-      // Add message ID to processed set
-      processedMessages.add(msg.key.id);
-      
-      // Clean up old message IDs after 5 minutes
-      setTimeout(() => {
-        processedMessages.delete(msg.key.id);
-      }, 5 * 60 * 1000);
-      
-      const text = msg.message?.conversation || 
-                   msg.message?.extendedTextMessage?.text ||
-                   args.join(' ');
-      
-      if (!text) {
-        return extra.reply('Please provide an Instagram link for the video.');
-      }
-      
-      // Check for various Instagram URL formats
-      const instagramPatterns = [
-        /https?:\/\/(?:www\.)?instagram\.com\//,
-        /https?:\/\/(?:www\.)?instagr\.am\//,
-        /https?:\/\/(?:www\.)?instagram\.com\/p\//,
-        /https?:\/\/(?:www\.)?instagram\.com\/reel\//,
-        /https?:\/\/(?:www\.)?instagram\.com\/tv\//
-      ];
-      
-      const isValidUrl = instagramPatterns.some(pattern => pattern.test(text));
-      
-      if (!isValidUrl) {
-        return extra.reply('That is not a valid Instagram link. Please provide a valid Instagram post, reel, or video link.');
-      }
-      
-      await sock.sendMessage(chatId, {
-        react: { text: '📥', key: msg.key }
-      });
-      
-      const downloadData = await igdl(text);
-      
-      if (!downloadData || !downloadData.data || downloadData.data.length === 0) {
-        return extra.reply('❌ No media found at the provided link. The post might be private or the link is invalid.');
-      }
-      
-      const mediaData = downloadData.data;
-      
-      // Simple deduplication - just remove exact URL duplicates
-      const uniqueMedia = extractUniqueMedia(mediaData);
-      
-      // Limit to maximum 20 unique media items
-      const mediaToDownload = uniqueMedia.slice(0, 20);
-      
-      if (mediaToDownload.length === 0) {
-        return extra.reply('❌ No valid media found to download. This might be a private post or the scraper failed.');
-      }
-      
-      // Download all media silently without status messages
-      for (let i = 0; i < mediaToDownload.length; i++) {
-        try {
-          const media = mediaToDownload[i];
-          const mediaUrl = media.url;
-          
-          // Check if URL ends with common video extensions
-          const isVideo = /\.(mp4|mov|avi|mkv|webm)$/i.test(mediaUrl) || 
-                        media.type === 'video' || 
-                        text.includes('/reel/') || 
-                        text.includes('/tv/');
-          
-          if (isVideo) {
-            await sock.sendMessage(chatId, {
-              video: { url: mediaUrl },
-              mimetype: 'video/mp4',
-              caption: `*DOWNLOADED BY ${config.botName.toUpperCase()}*`
-            }, { quoted: msg });
-          } else {
-            await sock.sendMessage(chatId, {
-              image: { url: mediaUrl },
-              caption: `*DOWNLOADED BY ${config.botName.toUpperCase()}*`
-            }, { quoted: msg });
-          }
-          
-          // Add small delay between downloads to prevent rate limiting
-          if (i < mediaToDownload.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-          
-        } catch (mediaError) {
-          console.error(`Error downloading media ${i + 1}:`, mediaError);
-          // Continue with next media if one fails
-        }
-      }
-    } catch (error) {
-      console.error('Error in Instagram command:', error);
-      await extra.reply('❌ An error occurred while processing the Instagram request. Please try again.');
+    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || args.join(' ');
+    const query = (text || '').trim();
+
+    if (!query) {
+      return await extra.reply('Usage: .instagram <Instagram link or search query>');
+    }
+
+    let url = null;
+    if (INSTAGRAM_PATTERNS.some(pattern => pattern.test(query))) {
+      url = query;
+    } else {
+      url = await findInstagramUrl(query);
+    }
+
+    if (!url) {
+      return await extra.reply('No Instagram result found. Try a different query or provide a direct Instagram link.');
+    }
+
+    const metadata = await fetchMetadata(url);
+    const caption = `🎵 ${metadata.title || 'Instagram result'}\n🔗 ${url}`;
+
+    if (metadata.thumbnail) {
+      await sock.sendMessage(extra.from, { image: { url: metadata.thumbnail }, caption }, { quoted: msg });
+    } else {
+      await sock.sendMessage(extra.from, { text: caption }, { quoted: msg });
     }
   }
 };

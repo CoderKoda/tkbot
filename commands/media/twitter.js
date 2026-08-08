@@ -1,156 +1,64 @@
 /**
- * Twitter / X Downloader
+ * Twitter / X Link Finder - share Tweet links only
  */
 
 const axios = require('axios');
-const config = require('../../config');
 
 const TWITTER_PATTERNS = [
   /https?:\/\/(?:www\.)?(?:twitter|x)\.com\//i,
-  /https?:\/\/(?:mobile\.)?twitter\.com\//i,
+  /https?:\/\/mobile\.(?:twitter|x)\.com\//i
 ];
 
-const processedMessages = new Set();
+const TWITTER_STATUS_PATTERNS = [
+  /https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[A-Za-z0-9_]+\/(?:status|status\/)[0-9]+/i,
+  /https?:\/\/mobile\.(?:twitter|x)\.com\/[A-Za-z0-9_]+\/status\/[0-9]+/i
+];
 
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  Accept: 'application/json',
-};
-
-function isValidTwitterUrl(url) {
-  return TWITTER_PATTERNS.some((pattern) => pattern.test(url));
-}
-
-function isMediaUrl(url) {
-  return typeof url === 'string' && /^https?:\/\//i.test(url) && !/error|cannot be null/i.test(url);
-}
-
-function caption(quality) {
-  const bot = config.botName.toUpperCase();
-  let text = `*DOWNLOADED BY ${bot}*`;
-  if (quality) text += `\n\n📹 Quality: ${quality}`;
-  return text;
-}
-
-async function fetchElite(url) {
-  const { data } = await axios.get('https://eliteprotech-apis.zone.id/x', {
-    params: { url },
-    timeout: 30000,
-    headers: HEADERS,
+async function findTwitterUrl(query) {
+  const response = await axios.get('https://html.duckduckgo.com/html/', {
+    params: { q: `site:twitter.com OR site:x.com ${query}` },
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    },
+    timeout: 20000
   });
 
-  if (data?.status !== 'success') throw new Error('Primary API returned no success');
+  const html = response.data;
+  const urls = new Set();
 
-  const videos = (data.videos || []).filter((v) => isMediaUrl(v?.url));
-  const mp3Url = isMediaUrl(data.mp3?.url) ? data.mp3.url : null;
-  const thumbnail = isMediaUrl(data.thumbnail) ? data.thumbnail : null;
-
-  if (!videos.length && !thumbnail && !mp3Url) throw new Error('No media in primary response');
-
-  return { videos, mp3Url, thumbnail };
-}
-
-async function fetchPrince(url) {
-  const { data } = await axios.get('https://api.princetechn.com/api/download/twitter', {
-    params: { apikey: 'prince', url },
-    timeout: 30000,
-    headers: HEADERS,
-  });
-
-  if (!data?.success) throw new Error('Fallback API failed');
-
-  const result = data.result || {};
-  const videos = (result.videoUrls || []).filter((v) => isMediaUrl(v?.url));
-  const thumbnail = isMediaUrl(result.thumbnail) ? result.thumbnail : null;
-
-  if (!videos.length && !thumbnail) throw new Error('No media in fallback response');
-
-  return { videos, mp3Url: null, thumbnail };
-}
-
-async function resolveMedia(url) {
-  try {
-    return await fetchElite(url);
-  } catch (err) {
-    console.error('[twitter] Elite API:', err.message);
+  for (const pattern of [...TWITTER_STATUS_PATTERNS, ...TWITTER_PATTERNS]) {
+    let match;
+    const regex = new RegExp(pattern.source, 'gim');
+    while ((match = regex.exec(html)) !== null) {
+      urls.add(match[0]);
+    }
   }
-  return fetchPrince(url);
+
+  return urls.values().next().value || null;
 }
 
-function pickBestVideo(videos) {
-  if (!videos.length) return null;
-
-  const scored = videos.map((v) => {
-    const label = String(v.quality || v.label || '');
-    const match = label.match(/(\d{3,4})p/i);
-    return { url: v.url, quality: label || 'best', score: match ? parseInt(match[1], 10) : 0 };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0];
-}
-
-async function sendVideo(sock, jid, msg, videoUrl, quality) {
-  const cap = caption(quality);
+async function fetchMetadata(url) {
   try {
-    await sock.sendMessage(jid, {
-      video: { url: videoUrl },
-      mimetype: 'video/mp4',
-      caption: cap,
-    }, { quoted: msg });
-    return;
-  } catch {
-    const res = await axios.get(videoUrl, {
-      responseType: 'arraybuffer',
-      timeout: 60000,
-      maxContentLength: 100 * 1024 * 1024,
-      headers: { ...HEADERS, Referer: 'https://x.com/' },
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        Referer: 'https://twitter.com/'
+      },
+      timeout: 20000
     });
-    await sock.sendMessage(jid, {
-      video: Buffer.from(res.data),
-      mimetype: 'video/mp4',
-      caption: cap,
-    }, { quoted: msg });
-  }
-}
 
-async function sendImage(sock, jid, msg, imageUrl) {
-  const cap = caption();
-  try {
-    await sock.sendMessage(jid, { image: { url: imageUrl }, caption: cap }, { quoted: msg });
-    return;
-  } catch {
-    const res = await axios.get(imageUrl, {
-      responseType: 'arraybuffer',
-      timeout: 30000,
-      headers: { ...HEADERS, Referer: 'https://x.com/' },
-    });
-    await sock.sendMessage(jid, { image: Buffer.from(res.data), caption: cap }, { quoted: msg });
-  }
-}
+    const html = response.data;
+    const titleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
+    const imageMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
 
-async function sendAudio(sock, jid, msg, audioUrl) {
-  const cap = caption('128kbps MP3');
-  try {
-    await sock.sendMessage(jid, {
-      audio: { url: audioUrl },
-      mimetype: 'audio/mpeg',
-      caption: cap,
-    }, { quoted: msg });
-    return;
-  } catch {
-    const res = await axios.get(audioUrl, {
-      responseType: 'arraybuffer',
-      timeout: 60000,
-      maxContentLength: 50 * 1024 * 1024,
-      headers: HEADERS,
-    });
-    await sock.sendMessage(jid, {
-      document: Buffer.from(res.data),
-      mimetype: 'audio/mpeg',
-      fileName: 'twitter_audio.mp3',
-      caption: cap,
-    }, { quoted: msg });
+    return {
+      title: titleMatch ? titleMatch[1] : null,
+      thumbnail: imageMatch ? imageMatch[1] : null
+    };
+  } catch (error) {
+    return { title: null, thumbnail: null };
   }
 }
 
@@ -158,53 +66,35 @@ module.exports = {
   name: 'twitter',
   aliases: ['x', 'xdl', 'twitterdl', 'twdl'],
   category: 'media',
-  description: 'Download Twitter / X videos and images',
-  usage: ',twitter <X URL>',
+  description: 'Search for a Twitter/X post and share the link only',
+  usage: '.twitter <Tweet link or search query>',
 
   async execute(sock, msg, args, extra) {
-    try {
-      if (processedMessages.has(msg.key.id)) return;
-      processedMessages.add(msg.key.id);
-      setTimeout(() => processedMessages.delete(msg.key.id), 5 * 60 * 1000);
+    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || args.join(' ');
+    const query = (text || '').trim();
 
-      const text = msg.message?.conversation
-        || msg.message?.extendedTextMessage?.text
-        || args.join(' ');
-
-      const url = text.replace(/^[^\s]+\s*/, '').trim();
-
-      if (!url) {
-        return extra.reply('Please provide a Twitter / X link.\n\nUsage: `,twitter <url>`');
-      }
-
-      if (!isValidTwitterUrl(url)) {
-        return extra.reply('❌ Invalid link. Use a valid `x.com` or `twitter.com` post URL.');
-      }
-
-      await sock.sendMessage(extra.from, { react: { text: '🔄', key: msg.key } });
-
-      const media = await resolveMedia(url);
-      const best = pickBestVideo(media.videos);
-
-      if (best) {
-        await sendVideo(sock, extra.from, msg, best.url, best.quality);
-        return;
-      }
-
-      if (media.thumbnail) {
-        await sendImage(sock, extra.from, msg, media.thumbnail);
-        return;
-      }
-
-      if (media.mp3Url) {
-        await sendAudio(sock, extra.from, msg, media.mp3Url);
-        return;
-      }
-
-      return extra.reply('❌ No downloadable media found for this post.');
-    } catch (error) {
-      console.error('[twitter]', error.message);
-      await extra.reply('❌ Failed to download from Twitter / X. Try another link or try again later.');
+    if (!query) {
+      return await extra.reply('Usage: .twitter <Tweet link or search query>');
     }
-  },
+
+    let url = null;
+    if (TWITTER_PATTERNS.some(pattern => pattern.test(query))) {
+      url = query;
+    } else {
+      url = await findTwitterUrl(query);
+    }
+
+    if (!url) {
+      return await extra.reply('No Twitter/X result found. Try a different query or provide a direct Tweet link.');
+    }
+
+    const metadata = await fetchMetadata(url);
+    const caption = `🎵 ${metadata.title || 'Twitter result'}\n🔗 ${url}`;
+
+    if (metadata.thumbnail) {
+      await sock.sendMessage(extra.from, { image: { url: metadata.thumbnail }, caption }, { quoted: msg });
+    } else {
+      await sock.sendMessage(extra.from, { text: caption }, { quoted: msg });
+    }
+  }
 };
