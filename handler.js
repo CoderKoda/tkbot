@@ -18,6 +18,73 @@ const { writeExifImg } = require('./utils/exif');
 // Group metadata cache to prevent rate limiting
 const groupMetadataCache = new Map();
 const CACHE_TTL = 60000; // 1 minute cache
+const antiSpamTracker = new Map();
+
+const getAntiSpamKey = (groupId, sender) => `${groupId}:${sender}`;
+
+const recordAntiSpamMessage = (groupId, sender, windowMs) => {
+  const key = getAntiSpamKey(groupId, sender);
+  const now = Date.now();
+  const timestamps = antiSpamTracker.get(key) || [];
+  const fresh = timestamps.filter((ts) => now - ts <= windowMs);
+  fresh.push(now);
+  antiSpamTracker.set(key, fresh);
+  return fresh.length;
+};
+
+const clearAntiSpamRecords = (groupId, sender) => {
+  antiSpamTracker.delete(getAntiSpamKey(groupId, sender));
+};
+
+const handleAntiSpam = async (sock, msg, groupMetadata, sender, count, threshold, windowSeconds, action) => {
+  const from = msg.key.remoteJid;
+  const mention = [sender];
+  let text = `⚠️ *Anti-Spam Detected!*
+
+@${sender.split('@')[0]} sent ${count} messages within ${windowSeconds} seconds.`;
+  const botIsAdmin = await isBotAdmin(sock, from, groupMetadata);
+
+  if (action === 'kick') {
+    if (botIsAdmin) {
+      try {
+        await sock.groupParticipantsUpdate(from, [sender], 'remove');
+        text += '\n\n🚫 User has been kicked for spamming.';
+      } catch (e) {
+        console.error('Failed to kick for antispam:', e);
+        text += '\n\n❌ Failed to kick user. Please ensure I am admin.';
+      }
+    } else {
+      text += '\n\n❌ Cannot kick because I am not admin.';
+    }
+  } else {
+    const warnings = database.addWarning(from, sender, 'Anti-spam violation');
+    if (warnings.count >= config.maxWarnings) {
+      if (botIsAdmin) {
+        try {
+          await sock.groupParticipantsUpdate(from, [sender], 'remove');
+          text = `🚫 *Anti-Spam Violation!*
+
+@${sender.split('@')[0]} has reached the maximum warnings and was removed.`;
+        } catch (e) {
+          console.error('Failed to kick after antispam warnings:', e);
+          text = `⚠️ *Anti-Spam Warning!*
+
+@${sender.split('@')[0]} has reached the maximum warnings but I could not remove them.`;
+        }
+      } else {
+        text = `⚠️ *Anti-Spam Warning!*
+
+@${sender.split('@')[0]} has reached the maximum warnings and would be removed if I were admin.`;
+      }
+      database.clearWarnings(from, sender);
+    } else {
+      text += `\n\n⚠️ Warning ${warnings.count}/${config.maxWarnings}.`;
+    }
+  }
+
+  await sock.sendMessage(from, { text, mentions: mention }, { quoted: msg });
+  clearAntiSpamRecords(from, sender);
+};
 
 // Load all commands
 const commands = loadCommands();
@@ -634,6 +701,27 @@ const handleMessage = async (sock, msg) => {
           const botIsAdmin = await isBotAdmin(sock, from, groupMetadata);
           if (botIsAdmin) {
             await sock.sendMessage(from, { delete: msg.key });
+            return;
+          }
+        }
+      }
+
+      if (groupSettings.antiSpam && !msg.key.fromMe) {
+        const senderIsAdmin = await isAdmin(sock, sender, from, groupMetadata);
+        const senderIsOwner = isOwner(sender);
+
+        if (!senderIsAdmin && !senderIsOwner) {
+          const threshold = Number(groupSettings.antiSpamThreshold) || 5;
+          const windowSeconds = Number(groupSettings.antiSpamWindow) || 10;
+          const action = (groupSettings.antiSpamAction || 'warn').toLowerCase();
+          const count = recordAntiSpamMessage(from, sender, windowSeconds * 1000);
+
+          if (count >= threshold) {
+            try {
+              await handleAntiSpam(sock, msg, groupMetadata, sender, count, threshold, windowSeconds, action);
+            } catch (e) {
+              console.error('Error in antispam handler:', e);
+            }
             return;
           }
         }
