@@ -1,41 +1,14 @@
 /**
- * Antitoxic Command - Analyze text for toxicity using the provided API
+ * Antitoxic Command - Configure passive toxicity moderation
  */
 
 const axios = require('axios');
 const database = require('../../database');
 
 const DEFAULT_API_KEY = 'uJ2c2efPEQ1L7b6qaQVHe63Ijj32nxBtIHi8Qceg55s';
+const DEFAULT_THRESHOLD = 0.7;
 
-function extractText(msg) {
-  if (!msg) return '';
-
-  const message = msg.message || msg;
-  if (typeof message?.conversation === 'string' && message.conversation.trim()) {
-    return message.conversation.trim();
-  }
-
-  if (typeof message?.extendedTextMessage?.text === 'string' && message.extendedTextMessage.text.trim()) {
-    return message.extendedTextMessage.text.trim();
-  }
-
-  const quoted = message?.extendedTextMessage?.contextInfo?.quotedMessage;
-  if (quoted) {
-    if (typeof quoted === 'string' && quoted.trim()) {
-      return quoted.trim();
-    }
-    if (typeof quoted.conversation === 'string' && quoted.conversation.trim()) {
-      return quoted.conversation.trim();
-    }
-    if (typeof quoted.extendedTextMessage?.text === 'string' && quoted.extendedTextMessage.text.trim()) {
-      return quoted.extendedTextMessage.text.trim();
-    }
-  }
-
-  return '';
-}
-
-function parseAnalysis(payload) {
+function parseAnalysis(payload, threshold = DEFAULT_THRESHOLD) {
   if (!payload) {
     return { flagged: false, parameter: 'toxicity', score: null, summary: '' };
   }
@@ -46,20 +19,21 @@ function parseAnalysis(payload) {
 
   const result = payload?.data || payload?.result || payload?.analysis || payload;
   const raw = typeof result === 'object' ? result : {};
-
   const parameter = raw?.parameter || raw?.reason || raw?.category || raw?.label || raw?.classification || raw?.prediction || raw?.type || payload?.parameter || payload?.reason || payload?.category || payload?.label || payload?.classification || 'toxicity';
 
   let score = raw?.score ?? raw?.confidence ?? raw?.probability ?? raw?.toxicity_score ?? payload?.score ?? payload?.confidence ?? null;
   let summary = raw?.message || raw?.summary || raw?.details || payload?.message || payload?.summary || '';
   let flagged = false;
+  let resolvedParameter = parameter;
 
   if (raw?.scores && typeof raw.scores === 'object') {
     const entries = Object.entries(raw.scores).filter(([, value]) => typeof value === 'number');
     const top = entries.reduce((best, current) => (current[1] > best[1] ? current : best), entries[0] || ['', 0]);
     if (top) {
       score = top[1];
+      resolvedParameter = top[0];
       summary = `${top[0]}: ${Number(top[1]).toFixed(4)}`;
-      flagged = top[1] >= 0.6;
+      flagged = top[1] >= threshold;
     }
   } else {
     if (typeof raw?.flagged === 'boolean') {
@@ -75,46 +49,11 @@ function parseAnalysis(payload) {
     } else if (typeof payload?.is_toxic === 'boolean') {
       flagged = payload.is_toxic;
     } else if (typeof score === 'number') {
-      flagged = score >= 0.6;
+      flagged = score >= threshold;
     }
   }
 
-  return { flagged, parameter, score, summary };
-}
-
-function formatResult(payload) {
-  if (!payload) return 'No result returned.';
-
-  if (typeof payload === 'string') {
-    return payload;
-  }
-
-  const result = payload?.data || payload?.result || payload?.analysis || payload;
-
-  if (typeof result === 'string') {
-    return result;
-  }
-
-  const lines = [];
-  const status = payload?.flagged || result?.flagged || payload?.toxic || result?.toxic || payload?.is_toxic || result?.is_toxic ? 'Flagged' : 'Safe';
-  lines.push(`Status: ${status}`);
-
-  const score = payload?.score ?? result?.score ?? payload?.confidence ?? result?.confidence ?? payload?.probability ?? result?.probability ?? payload?.toxicity_score ?? result?.toxicity_score ?? null;
-  if (score !== undefined && score !== null) {
-    const rounded = typeof score === 'number' ? score.toFixed(4) : score;
-    lines.push(`Score: ${rounded}`);
-  }
-
-  const summary = payload?.summary || result?.summary || payload?.details || result?.details || payload?.message || result?.message || '';
-  if (summary) {
-    lines.push(`Details: ${summary}`);
-  }
-
-  if (lines.length > 0) {
-    return lines.join('\n');
-  }
-
-  return JSON.stringify(result, null, 2);
+  return { flagged, parameter: resolvedParameter, score, summary };
 }
 
 async function analyzeText(text, apiKey = DEFAULT_API_KEY) {
@@ -130,22 +69,21 @@ async function analyzeText(text, apiKey = DEFAULT_API_KEY) {
     }
   );
 
-  return parseAnalysis(response.data);
+  return response.data;
 }
 
 module.exports = {
   name: 'antitoxic',
   aliases: ['toxic'],
   category: 'admin',
-  description: 'Configure passive toxicity moderation or analyze a message manually',
-  usage: '/antitoxic [on/off/set/get] or /antitoxic <text>',
+  description: 'Configure passive toxicity moderation',
+  usage: '/antitoxic [on/off/set/get]',
   groupOnly: true,
   adminOnly: true,
   botAdminNeeded: true,
 
   analyzeText,
-  extractText,
-  getReason: (payload) => parseAnalysis(payload).parameter,
+  parseAnalysis,
 
   async execute(sock, msg, args, extra) {
     try {
@@ -206,27 +144,16 @@ module.exports = {
         }
       }
 
-      const text = (args.join(' ').trim() || extractText(msg)).trim();
-      if (!text) {
-        return extra.reply('❌ Usage: /antitoxic <text>\nReply to a message with /antitoxic to analyze it.');
-      }
-
-      const apiKey = process.env.ANTITOXIC_API_KEY || process.env.TOXIC_API_KEY || DEFAULT_API_KEY;
-      if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
-        return extra.reply('⚠️ Toxicity API key is not configured. Replace YOUR_API_KEY_HERE in the command file with your real key.');
-      }
-
-      await extra.reply('🧪 Analyzing text...');
-
-      const analysis = await analyzeText(text, apiKey);
-      const formatted = formatResult({
-        ...analysis,
-        label: analysis.parameter,
-      });
-      return extra.reply(`🧪 *Toxicity Analysis*\n\n${formatted}`);
+      return extra.reply(
+        '❌ Usage:\n' +
+        '  /antitoxic on\n' +
+        '  /antitoxic off\n' +
+        '  /antitoxic set warn\n' +
+        '  /antitoxic get'
+      );
     } catch (error) {
       const message = error?.response?.data?.message || error?.message || 'Unknown error';
-      return extra.reply(`❌ Toxicity analysis failed.\n\n${message}`);
+      return extra.reply(`❌ Error: ${message}`);
     }
   },
 };

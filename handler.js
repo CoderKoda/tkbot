@@ -849,18 +849,6 @@ const handleMessage = async (sock, msg) => {
         }
       }
 
-      // Antitoxic protection
-      if (groupSettings.antitoxic && !msg.key.fromMe) {
-        const messageText = body || content.imageMessage?.caption || content.videoMessage?.caption || '';
-        if (messageText && !body.startsWith(config.prefix)) {
-          try {
-            const blocked = await handleAntitoxic(sock, msg, groupMetadata, messageText, sender);
-            if (blocked) return;
-          } catch (e) {
-            console.error('Error in antitoxic handler:', e);
-          }
-        }
-      }
     }
     
     // Anti-group mention protection (check BEFORE prefix check, as these are non-command messages)
@@ -1030,6 +1018,22 @@ const handleMessage = async (sock, msg) => {
         if ((isMentioned || isReplyToBot) && !body.startsWith(config.prefix)) {
           await chatbotCmd.handleChat(sock, msg, body, sender);
           return;
+        }
+      }
+    }
+
+    // Antitoxic protection — run before command parsing so every incoming message is evaluated
+    if (isGroup) {
+      const groupSettings = database.getGroupSettings(from);
+      if (groupSettings.antitoxic && !msg.key.fromMe) {
+        const messageText = body || content.imageMessage?.caption || content.videoMessage?.caption || '';
+        if (messageText) {
+          try {
+            const blocked = await handleAntitoxic(sock, msg, groupMetadata, messageText, sender);
+            if (blocked) return;
+          } catch (e) {
+            console.error('Error in antitoxic handler:', e);
+          }
         }
       }
     }
@@ -1583,22 +1587,45 @@ const handleAntitoxic = async (sock, msg, groupMetadata, userMessage, sender) =>
     const botIsAdmin = await isBotAdmin(sock, from, groupMetadata);
     if (!botIsAdmin) return false;
 
-    const analysis = await antitoxicCmd.analyzeText(String(userMessage).trim());
-    if (!analysis.flagged) return false;
+    const analysisData = await antitoxicCmd.analyzeText(String(userMessage).trim());
+    const analysisResult = antitoxicCmd.parseAnalysis(analysisData, 0.7);
+    const scoreValue = analysisResult.score != null ? Number(analysisResult.score).toFixed(4) : 'n/a';
+    console.log(`[antitoxic] group=${from} sender=${sender} score=${scoreValue} category=${analysisResult.parameter || 'toxicity'} flagged=${analysisResult.flagged}`);
+
+    if (!analysisResult.flagged) {
+      console.log(`[antitoxic] action=none`);
+      return false;
+    }
 
     try {
       await sock.sendMessage(from, { delete: msg.key });
+      console.log(`[antitoxic] action=delete`);
     } catch (e) {
       console.error('Failed to delete toxic message:', e);
       return false;
     }
 
     const maxWarnings = config.maxWarnings || 3;
-    const result = database.addWarning(from, sender, analysis.parameter || 'Toxicity');
-    await sock.sendMessage(from, {
-      text: `⚠️ *Antitoxic!* @user warning ${result.count}/${maxWarnings} for ${analysis.parameter || 'toxicity'}.`,
-      mentions: [sender],
-    }, { quoted: msg });
+    const result = database.addWarning(from, sender, 'Toxicity');
+    if (result.count >= maxWarnings) {
+      try {
+        await sock.groupParticipantsUpdate(from, [sender], 'remove');
+        database.clearWarnings(from, sender);
+        await sock.sendMessage(from, {
+          text: `🚫 *Antitoxic!* @user was kicked after ${maxWarnings} warnings.`,
+          mentions: [sender],
+        }, { quoted: msg });
+        console.log(`[antitoxic] action=kick`);
+      } catch (e) {
+        console.error('Failed to kick after antitoxic warnings:', e);
+      }
+    } else {
+      await sock.sendMessage(from, {
+        text: `⚠️ *Antitoxic!* @user warning ${result.count}/${maxWarnings} for toxicity.`,
+        mentions: [sender],
+      }, { quoted: msg });
+      console.log(`[antitoxic] action=warn`);
+    }
 
     return true;
   } catch (error) {
