@@ -48,24 +48,35 @@ function parseAnalysis(payload) {
   const raw = typeof result === 'object' ? result : {};
 
   const parameter = raw?.parameter || raw?.reason || raw?.category || raw?.label || raw?.classification || raw?.prediction || raw?.type || payload?.parameter || payload?.reason || payload?.category || payload?.label || payload?.classification || 'toxicity';
-  const score = raw?.score ?? raw?.confidence ?? raw?.probability ?? raw?.toxicity_score ?? payload?.score ?? payload?.confidence ?? null;
-  const summary = raw?.message || raw?.summary || raw?.details || payload?.message || payload?.summary || '';
 
+  let score = raw?.score ?? raw?.confidence ?? raw?.probability ?? raw?.toxicity_score ?? payload?.score ?? payload?.confidence ?? null;
+  let summary = raw?.message || raw?.summary || raw?.details || payload?.message || payload?.summary || '';
   let flagged = false;
-  if (typeof raw?.flagged === 'boolean') {
-    flagged = raw.flagged;
-  } else if (typeof raw?.toxic === 'boolean') {
-    flagged = raw.toxic;
-  } else if (typeof raw?.is_toxic === 'boolean') {
-    flagged = raw.is_toxic;
-  } else if (typeof payload?.flagged === 'boolean') {
-    flagged = payload.flagged;
-  } else if (typeof payload?.toxic === 'boolean') {
-    flagged = payload.toxic;
-  } else if (typeof payload?.is_toxic === 'boolean') {
-    flagged = payload.is_toxic;
-  } else if (typeof score === 'number') {
-    flagged = score >= 0.6;
+
+  if (raw?.scores && typeof raw.scores === 'object') {
+    const entries = Object.entries(raw.scores).filter(([, value]) => typeof value === 'number');
+    const top = entries.reduce((best, current) => (current[1] > best[1] ? current : best), entries[0] || ['', 0]);
+    if (top) {
+      score = top[1];
+      summary = `${top[0]}: ${Number(top[1]).toFixed(4)}`;
+      flagged = top[1] >= 0.6;
+    }
+  } else {
+    if (typeof raw?.flagged === 'boolean') {
+      flagged = raw.flagged;
+    } else if (typeof raw?.toxic === 'boolean') {
+      flagged = raw.toxic;
+    } else if (typeof raw?.is_toxic === 'boolean') {
+      flagged = raw.is_toxic;
+    } else if (typeof payload?.flagged === 'boolean') {
+      flagged = payload.flagged;
+    } else if (typeof payload?.toxic === 'boolean') {
+      flagged = payload.toxic;
+    } else if (typeof payload?.is_toxic === 'boolean') {
+      flagged = payload.is_toxic;
+    } else if (typeof score === 'number') {
+      flagged = score >= 0.6;
+    }
   }
 
   return { flagged, parameter, score, summary };
@@ -85,25 +96,18 @@ function formatResult(payload) {
   }
 
   const lines = [];
-  const label = result?.label || result?.classification || result?.prediction || result?.type || payload?.label || payload?.classification;
-  if (label) {
-    lines.push(`Label: ${label}`);
-  }
+  const status = payload?.flagged || result?.flagged || payload?.toxic || result?.toxic || payload?.is_toxic || result?.is_toxic ? 'Flagged' : 'Safe';
+  lines.push(`Status: ${status}`);
 
-  const score = result?.score ?? result?.confidence ?? result?.probability ?? result?.toxicity_score ?? payload?.score ?? payload?.confidence;
+  const score = payload?.score ?? result?.score ?? payload?.confidence ?? result?.confidence ?? payload?.probability ?? result?.probability ?? payload?.toxicity_score ?? result?.toxicity_score ?? null;
   if (score !== undefined && score !== null) {
-    const rounded = typeof score === 'number' ? score.toFixed(2) : score;
+    const rounded = typeof score === 'number' ? score.toFixed(4) : score;
     lines.push(`Score: ${rounded}`);
   }
 
-  const isToxic = result?.toxic ?? result?.is_toxic ?? payload?.toxic ?? payload?.is_toxic;
-  if (typeof isToxic === 'boolean') {
-    lines.push(`Toxic: ${isToxic ? 'Yes' : 'No'}`);
-  }
-
-  const summary = result?.message || result?.summary || result?.details || payload?.message || payload?.summary;
+  const summary = payload?.summary || result?.summary || payload?.details || result?.details || payload?.message || result?.message || '';
   if (summary) {
-    lines.push(`Summary: ${summary}`);
+    lines.push(`Details: ${summary}`);
   }
 
   if (lines.length > 0) {
