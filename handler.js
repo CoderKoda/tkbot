@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const chatbotCmd = require('./commands/admin/chatbot');
+const antitoxicCmd = require('./commands/admin/antitoxic');
 const { containsBadWord } = require('./utils/badwords');
 const { writeExifImg } = require('./utils/exif');
 
@@ -847,6 +848,19 @@ const handleMessage = async (sock, msg) => {
           }
         }
       }
+
+      // Antitoxic protection
+      if (groupSettings.antitoxic && !msg.key.fromMe) {
+        const messageText = body || content.imageMessage?.caption || content.videoMessage?.caption || '';
+        if (messageText && !body.startsWith(config.prefix)) {
+          try {
+            const blocked = await handleAntitoxic(sock, msg, groupMetadata, messageText, sender);
+            if (blocked) return;
+          } catch (e) {
+            console.error('Error in antitoxic handler:', e);
+          }
+        }
+      }
     }
     
     // Anti-group mention protection (check BEFORE prefix check, as these are non-command messages)
@@ -1549,6 +1563,46 @@ const handleAntibadword = async (sock, msg, groupMetadata, userMessage, sender) 
     return true;
   } catch (error) {
     console.error('Error in antibadword handler:', error);
+    return false;
+  }
+};
+
+// Antitoxic handler
+const handleAntitoxic = async (sock, msg, groupMetadata, userMessage, sender) => {
+  try {
+    const from = msg.key.remoteJid;
+    const groupSettings = database.getGroupSettings(from);
+    if (!groupSettings.antitoxic) return false;
+    if (!userMessage || !String(userMessage).trim()) return false;
+    if (String(userMessage).trim().startsWith(config.prefix)) return false;
+
+    const senderIsAdmin = await isAdmin(sock, sender, from, groupMetadata);
+    const senderIsOwner = isOwner(sender);
+    if (senderIsAdmin || senderIsOwner) return false;
+
+    const botIsAdmin = await isBotAdmin(sock, from, groupMetadata);
+    if (!botIsAdmin) return false;
+
+    const analysis = await antitoxicCmd.analyzeText(String(userMessage).trim());
+    if (!analysis.flagged) return false;
+
+    try {
+      await sock.sendMessage(from, { delete: msg.key });
+    } catch (e) {
+      console.error('Failed to delete toxic message:', e);
+      return false;
+    }
+
+    const maxWarnings = config.maxWarnings || 3;
+    const result = database.addWarning(from, sender, analysis.parameter || 'Toxicity');
+    await sock.sendMessage(from, {
+      text: `⚠️ *Antitoxic!* @user warning ${result.count}/${maxWarnings} for ${analysis.parameter || 'toxicity'}.`,
+      mentions: [sender],
+    }, { quoted: msg });
+
+    return true;
+  } catch (error) {
+    console.error('Error in antitoxic handler:', error);
     return false;
   }
 };

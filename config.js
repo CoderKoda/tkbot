@@ -47,6 +47,8 @@ module.exports = {
       antistickerAction: 'delete', // 'delete', 'kick'
       antibadword: false, // Block bad words in group
       antibadwordAction: 'delete', // 'delete', 'kick', 'warn'
+      antitoxic: false, // Analyze messages for toxicity in group
+      antitoxicAction: 'warn', // passive warning mode
       welcome: false,
       welcomeMessage: '╭╼━≪•𝙽𝙴𝚆 𝙼𝙴𝙼𝙱𝙴𝚁•≫━╾╮\n┃𝚆𝙴𝙻𝙲𝙾𝙼𝙴: @user 👋\n┃Member count: #memberCount\n┃𝚃𝙸𝙼𝙴: time⏰\n╰━━━━━━━━━━━━━━━╯\n\n*@user* Welcome to *@group*! 🎉\n*Group 𝙳𝙴𝚂𝙲�𝚁𝙸𝙿𝚃𝙸𝙾𝙽*\ngroupDesc\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ botName*',
       goodbye: false,
