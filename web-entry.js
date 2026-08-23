@@ -189,6 +189,14 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
+  if (req.method === 'GET' && url.pathname === '/health') {
+    res.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    return res.end('OK');
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/pair') {
     try {
       const body = await readJson(req);
