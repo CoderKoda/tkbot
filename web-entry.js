@@ -1,4 +1,8 @@
-require('dotenv').config();
+try {
+  require('dotenv').config();
+} catch (_) {
+  // dotenv is optional; hosted environments normally provide process.env directly.
+}
 
 // Baileys/undici may reference browser globals that older Node versions do not expose.
 if (typeof globalThis.File === 'undefined') {
@@ -20,7 +24,7 @@ if (typeof globalThis.crypto === 'undefined') {
   globalThis.crypto = require('node:crypto').webcrypto;
 }
 
-const express = require('express');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const Module = require('module');
@@ -50,6 +54,33 @@ function publish(patch = {}) {
 
 function sanitizePhone(value) {
   return String(value || '').replace(/[^0-9]/g, '');
+}
+
+function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > 1024 * 1024) {
+        reject(new Error('Request body too large.'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (!body) return resolve({});
+      try { resolve(JSON.parse(body)); } catch (_) { reject(new Error('Invalid JSON body.')); }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res, statusCode, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
+  res.end(body);
 }
 
 function sessionPath() {
@@ -82,9 +113,7 @@ Module._load = function patchedLoad(request, parent, isMain) {
     socket.ev.on('connection.update', async (update) => {
       const { connection, qr, lastDisconnect } = update;
 
-      if (qr) {
-        publish({ connection: 'qr', qr, pairingCode: null, error: null });
-      }
+      if (qr) publish({ connection: 'qr', qr, pairingCode: null, error: null });
 
       if (connection === 'open') {
         const botNumber = socket.user?.id?.split(':')[0] || null;
@@ -126,80 +155,113 @@ Module._load = function patchedLoad(request, parent, isMain) {
   return wrapped;
 };
 
-const app = express();
-app.use(express.json());
-
 const publicDir = path.join(__dirname, 'public');
-if (fs.existsSync(publicDir)) app.use(express.static(publicDir));
 
-app.post('/api/pair', async (req, res) => {
-  const phoneNumber = sanitizePhone(req.body?.phoneNumber);
-  if (!/^\d{7,15}$/.test(phoneNumber)) {
-    return res.status(400).json({ error: 'Enter your number with country code, digits only.' });
+function serveStatic(req, res) {
+  const urlPath = new URL(req.url, 'http://localhost').pathname;
+  const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
+  const filePath = path.resolve(publicDir, relative);
+
+  if (!filePath.startsWith(publicDir + path.sep) && filePath !== publicDir) {
+    return sendJson(res, 403, { error: 'Forbidden' });
   }
 
-  try {
-    pendingPairingPhone = phoneNumber;
-    publish({ connection: 'resetting', pairingCode: null, qr: null, error: null, phoneNumber });
+  fs.stat(filePath, (statError, stat) => {
+    if (statError || !stat.isFile()) return sendJson(res, 404, { error: 'Not found' });
+    const ext = path.extname(filePath).toLowerCase();
+    const contentTypes = {
+      '.html': 'text/html; charset=utf-8',
+      '.css': 'text/css; charset=utf-8',
+      '.js': 'application/javascript; charset=utf-8',
+      '.json': 'application/json; charset=utf-8',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
+    };
 
-    if (activeSocket) {
-      try { await activeSocket.end(undefined, undefined, { reason: 'web-pairing-reset' }); } catch (_) {}
-    }
-
-    resetSessionFiles();
-    // index.js already owns the normal reconnect/start lifecycle. Closing its
-    // current socket causes its existing connection.update handler to create
-    // a fresh socket, which the wrapper above converts into a pairing-code flow.
-    res.json({ ok: true });
-  } catch (error) {
-    publish({ connection: 'error', error: error.message || String(error) });
-    res.status(500).json({ error: error.message || String(error) });
-  }
-});
-
-app.post('/api/pair-qr', async (req, res) => {
-  try {
-    pendingPairingPhone = null;
-    publish({ connection: 'resetting', pairingCode: null, qr: null, error: null, phoneNumber: null });
-
-    if (activeSocket) {
-      try { await activeSocket.end(undefined, undefined, { reason: 'web-qr-reset' }); } catch (_) {}
-    }
-
-    resetSessionFiles();
-    res.json({ ok: true });
-  } catch (error) {
-    publish({ connection: 'error', error: error.message || String(error) });
-    res.status(500).json({ error: error.message || String(error) });
-  }
-});
-
-app.get('/api/status', (_req, res) => {
-  res.json(state);
-});
-
-app.get('/api/stream', (req, res) => {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
+    res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream' });
+    fs.createReadStream(filePath).pipe(res);
   });
+}
 
-  res.write(`data: ${JSON.stringify(state)}\n\n`);
-  subscribers.add(res);
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
-  const heartbeat = setInterval(() => {
-    try { res.write(': heartbeat\n\n'); } catch (_) {}
-  }, 15000);
+  if (req.method === 'POST' && url.pathname === '/api/pair') {
+    try {
+      const body = await readJson(req);
+      const phoneNumber = sanitizePhone(body.phoneNumber);
+      if (!/^\d{7,15}$/.test(phoneNumber)) {
+        return sendJson(res, 400, { error: 'Enter your number with country code, digits only.' });
+      }
 
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    subscribers.delete(res);
-  });
+      pendingPairingPhone = phoneNumber;
+      publish({ connection: 'resetting', pairingCode: null, qr: null, error: null, phoneNumber });
+
+      if (activeSocket) {
+        try { await activeSocket.end(undefined, undefined, { reason: 'web-pairing-reset' }); } catch (_) {}
+      }
+
+      resetSessionFiles();
+      return sendJson(res, 200, { ok: true });
+    } catch (error) {
+      publish({ connection: 'error', error: error.message || String(error) });
+      return sendJson(res, 500, { error: error.message || String(error) });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/pair-qr') {
+    try {
+      pendingPairingPhone = null;
+      publish({ connection: 'resetting', pairingCode: null, qr: null, error: null, phoneNumber: null });
+
+      if (activeSocket) {
+        try { await activeSocket.end(undefined, undefined, { reason: 'web-qr-reset' }); } catch (_) {}
+      }
+
+      resetSessionFiles();
+      return sendJson(res, 200, { ok: true });
+    } catch (error) {
+      publish({ connection: 'error', error: error.message || String(error) });
+      return sendJson(res, 500, { error: error.message || String(error) });
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/status') {
+    return sendJson(res, 200, state);
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/stream') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    res.write(`data: ${JSON.stringify(state)}\n\n`);
+    subscribers.add(res);
+
+    const heartbeat = setInterval(() => {
+      try { res.write(': heartbeat\n\n'); } catch (_) {}
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      subscribers.delete(res);
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && fs.existsSync(publicDir)) {
+    return serveStatic(req, res);
+  }
+
+  sendJson(res, 404, { error: 'Not found' });
 });
 
 const port = Number(process.env.PORT || config.PORT || 3000);
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Pairing website running on port ${port}`);
   console.log(`Local URL: http://localhost:${port}`);
 });
