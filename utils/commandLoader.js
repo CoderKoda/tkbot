@@ -26,6 +26,10 @@ function registerEconomyCommands(commands) {
   registerRegistryCommands(commands, './economyCommands', 'economy');
 }
 
+function registerEconomyV050Commands(commands) {
+  registerRegistryCommands(commands, './economyV050Commands', 'economy v0.50');
+}
+
 const loadCommands = () => {
   const commands = new Map();
   const commandsPath = path.join(__dirname, '..', 'commands');
@@ -48,9 +52,7 @@ const loadCommands = () => {
           if (command.name) {
             commands.set(command.name, command);
             if (command.aliases) {
-              command.aliases.forEach(alias => {
-                commands.set(alias, command);
-              });
+              command.aliases.forEach(alias => commands.set(alias, command));
             }
           }
         } catch (error) {
@@ -62,8 +64,8 @@ const loadCommands = () => {
   
   registerFunCommands(commands);
   registerEconomyCommands(commands);
+  registerEconomyV050Commands(commands);
   return commands;
 };
 
-module.exports = { loadCommands, registerFunCommands, registerEconomyCommands };
-
+module.exports = { loadCommands, registerFunCommands, registerEconomyCommands, registerEconomyV050Commands };
