@@ -1,6 +1,8 @@
 const v050 = require('./economyV050');
 const database = require('../database');
 
+v050.startPassiveIncomeScheduler();
+
 const eco = (def) => ({ category: 'economy', groupOnly: true, ...def });
 const sudoOnly = (def) => eco({ ...def, sudoOnly: true });
 const parsePositiveInt = (value) => {
@@ -38,10 +40,10 @@ const commands = [
     description: 'Buy passive-income items',
     usage: ',buy <item name> [quantity]',
     async execute(sock, msg, args, extra) {
-      const quantity = parsePositiveInt(args[args.length - 1]) || 1;
-      const hasExplicitQuantity = Number.isInteger(Number(args[args.length - 1]));
-      const nameArgs = hasExplicitQuantity ? args.slice(0, -1) : args;
-      const itemName = nameArgs.join(' ').trim();
+      const explicit = Number(args[args.length - 1]);
+      const hasExplicitQuantity = Number.isInteger(explicit) && explicit > 0;
+      const quantity = hasExplicitQuantity ? explicit : 1;
+      const itemName = (hasExplicitQuantity ? args.slice(0, -1) : args).join(' ').trim();
       if (!itemName) return extra.reply('❌ Usage: `,buy <item name> [quantity]`');
 
       const result = v050.buyPassive(extra.from, extra.sender, itemName, quantity);
