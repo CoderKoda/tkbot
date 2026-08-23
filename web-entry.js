@@ -42,7 +42,7 @@ let pendingPairingPhone = null;
 
 function publish(patch = {}) {
   Object.assign(state, patch, { updatedAt: Date.now() });
-  const payload = `data: ${JSON.stringify(state)}\\n\\n`;
+  const payload = `data: ${JSON.stringify(state)}\n\n`;
   for (const res of subscribers) {
     try { res.write(payload); } catch (_) { subscribers.delete(res); }
   }
@@ -134,7 +134,7 @@ if (fs.existsSync(publicDir)) app.use(express.static(publicDir));
 
 app.post('/api/pair', async (req, res) => {
   const phoneNumber = sanitizePhone(req.body?.phoneNumber);
-  if (!/^\\d{7,15}$/.test(phoneNumber)) {
+  if (!/^\d{7,15}$/.test(phoneNumber)) {
     return res.status(400).json({ error: 'Enter your number with country code, digits only.' });
   }
 
@@ -185,11 +185,11 @@ app.get('/api/stream', (req, res) => {
     Connection: 'keep-alive',
   });
 
-  res.write(`data: ${JSON.stringify(state)}\\n\\n`);
+  res.write(`data: ${JSON.stringify(state)}\n\n`);
   subscribers.add(res);
 
   const heartbeat = setInterval(() => {
-    try { res.write(': heartbeat\\n\\n'); } catch (_) {}
+    try { res.write(': heartbeat\n\n'); } catch (_) {}
   }, 15000);
 
   req.on('close', () => {
