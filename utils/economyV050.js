@@ -5,10 +5,10 @@ const DB_PATH = path.join(__dirname, '..', 'database', 'economy.json');
 const HOUR = 60 * 60 * 1000;
 
 const DEFAULT_ITEMS = [
-  { code: '1001', name: 'Raspberry Pi', income: 25, stock: 100, description: 'A small computer that generates passive income.' },
-  { code: '1002', name: 'Laptop', income: 100, stock: 50, description: 'A portable computer with a stronger passive income stream.' },
-  { code: '1003', name: 'Miner', income: 500, stock: 20, description: 'A dedicated mining machine with high passive income.' },
-  { code: '1004', name: 'Server', income: 1000, stock: 5, description: 'A powerful server producing the maximum starter income.' },
+  { typeCode: '1001', name: 'Raspberry Pi', income: 25, stock: 100, description: 'A small computer that generates passive income.' },
+  { typeCode: '1002', name: 'Laptop', income: 100, stock: 50, description: 'A portable computer with a stronger passive income stream.' },
+  { typeCode: '1003', name: 'Miner', income: 500, stock: 20, description: 'A dedicated mining machine with high passive income.' },
+  { typeCode: '1004', name: 'Server', income: 1000, stock: 5, description: 'A powerful server producing the maximum starter income.' },
 ];
 
 function loadDB() {
@@ -21,12 +21,11 @@ function loadDB() {
     if (!db._v050) db._v050 = {};
     if (!Array.isArray(db._v050.items)) db._v050.items = DEFAULT_ITEMS.map((item) => ({ ...item }));
     if (!db._v050.tradingHall) db._v050.tradingHall = {};
-    if (!Number.isFinite(db._v050.nextTradingCode)) db._v050.nextTradingCode = 5000;
     if (!Number.isFinite(db._v050.lastPassiveSync)) db._v050.lastPassiveSync = 0;
     return db;
   } catch (error) {
     console.error('[economy v0.50] database load error:', error.message);
-    return { _v050: { items: DEFAULT_ITEMS.map((item) => ({ ...item })), tradingHall: {}, nextTradingCode: 5000, lastPassiveSync: 0 } };
+    return { _v050: { items: DEFAULT_ITEMS.map((item) => ({ ...item })), tradingHall: {}, lastPassiveSync: 0 } };
   }
 }
 
@@ -42,24 +41,72 @@ function ensureUser(db, groupId, userId) {
   user.wallet = Number(user.wallet) || 0;
   user.bank = Number(user.bank) || 0;
   user.inventory = user.inventory && typeof user.inventory === 'object' ? user.inventory : {};
-  user.passiveItems = user.passiveItems && typeof user.passiveItems === 'object' ? user.passiveItems : {};
+  migrateLegacyPassiveInventory(user);
   return user;
 }
 
-function nextFourDigitCode(items) {
-  const used = new Set(items.map((item) => String(item.code)));
-  for (let n = 1000; n <= 4999; n += 1) {
-    if (!used.has(String(n))) return String(n);
+function migrateLegacyPassiveInventory(user) {
+  const legacy = user.passiveItems;
+  if (!legacy || typeof legacy !== 'object' || Array.isArray(legacy) || user._v050Migrated) return;
+  const converted = {};
+  for (const [key, value] of Object.entries(legacy)) {
+    if (typeof value === 'number' && value > 0) {
+      // Legacy quantity records cannot safely reconstruct individual IDs.
+      // Preserve them under a private migration bucket for compatibility.
+      converted[`legacy:${key}`] = value;
+    } else if (value && typeof value === 'object') {
+      converted[key] = value;
+    }
   }
-  throw new Error('No passive item codes remain.');
+  user.passiveItems = converted;
+  user._v050Migrated = true;
 }
 
-function findItem(db, value) {
+function getAllOwnedItems(user) {
+  return Object.values(user.passiveItems || {}).filter((entry) => entry && typeof entry === 'object');
+}
+
+function usedItemIds(db) {
+  const used = new Set();
+  for (const [groupId, group] of Object.entries(db)) {
+    if (groupId === '_v050' || !group || typeof group !== 'object') continue;
+    for (const rawUser of Object.values(group)) {
+      const user = rawUser && typeof rawUser === 'object' ? rawUser : {};
+      for (const id of Object.keys(user.passiveItems || {})) {
+        if (/^\d{4}$/.test(id)) used.add(id);
+      }
+    }
+  }
+  for (const listing of Object.values(db._v050.tradingHall || {})) {
+    if (listing?.itemId) used.add(String(listing.itemId));
+  }
+  return used;
+}
+
+function generateUniqueItemId(db) {
+  const used = usedItemIds(db);
+  for (let n = 2000; n <= 9999; n += 1) {
+    const id = String(n);
+    if (!used.has(id)) return id;
+  }
+  throw new Error('No unique four-digit item IDs remain.');
+}
+
+function findItemType(db, value) {
   const needle = String(value || '').trim().toLowerCase();
   if (!needle) return null;
   return db._v050.items.find((item) =>
-    String(item.code) === needle || item.name.toLowerCase() === needle
+    String(item.typeCode) === needle || item.name.toLowerCase() === needle
   ) || null;
+}
+
+function findOwnedItem(db, user, itemId) {
+  const id = String(itemId || '').trim();
+  const item = user.passiveItems?.[id];
+  if (!item || typeof item !== 'object') return null;
+  const type = db._v050.items.find((entry) => String(entry.typeCode) === String(item.typeCode));
+  if (!type) return null;
+  return { id, instance: item, type };
 }
 
 function syncPassiveIncome() {
@@ -81,14 +128,13 @@ function syncPassiveIncome() {
 
   for (const [groupId, group] of Object.entries(db)) {
     if (groupId === '_v050' || !group || typeof group !== 'object') continue;
-    for (const [userId, rawUser] of Object.entries(group)) {
+    for (const [userId] of Object.entries(group)) {
       const user = ensureUser(db, groupId, userId);
       let earned = 0;
-      for (const [code, quantityRaw] of Object.entries(user.passiveItems)) {
-        const quantity = Math.max(0, Number(quantityRaw) || 0);
-        const item = db._v050.items.find((entry) => String(entry.code) === String(code));
-        if (!item || quantity <= 0) continue;
-        earned += Number(item.income) * quantity * hours;
+      for (const owned of getAllOwnedItems(user)) {
+        const type = db._v050.items.find((entry) => String(entry.typeCode) === String(owned.typeCode));
+        if (!type) continue;
+        earned += Number(type.income) * hours;
       }
       if (earned > 0) {
         user.wallet += earned;
@@ -120,17 +166,13 @@ function addItem(name, income, description) {
   const cleanName = String(name || '').trim();
   const cleanDescription = String(description || '').trim();
   const cleanIncome = Number(income);
-  if (!cleanName || !cleanDescription || !Number.isInteger(cleanIncome) || cleanIncome <= 0) {
-    return { ok: false, error: 'invalid' };
-  }
+  if (!cleanName || !cleanDescription || !Number.isInteger(cleanIncome) || cleanIncome <= 0) return { ok: false, error: 'invalid' };
 
   const db = loadDB();
-  if (db._v050.items.some((item) => item.name.toLowerCase() === cleanName.toLowerCase())) {
-    return { ok: false, error: 'exists' };
-  }
+  if (db._v050.items.some((item) => item.name.toLowerCase() === cleanName.toLowerCase())) return { ok: false, error: 'exists' };
 
   const item = {
-    code: nextFourDigitCode(db._v050.items),
+    typeCode: generateUniqueItemId({ _v050: { items: db._v050.items, tradingHall: {} } }),
     name: cleanName,
     income: cleanIncome,
     stock: 0,
@@ -145,7 +187,7 @@ function addStock(value, amount) {
   const cleanAmount = Number(amount);
   if (!Number.isInteger(cleanAmount) || cleanAmount <= 0) return { ok: false, error: 'invalid' };
   const db = loadDB();
-  const item = findItem(db, value);
+  const item = findItemType(db, value);
   if (!item) return { ok: false, error: 'item' };
   item.stock += cleanAmount;
   saveDB(db);
@@ -158,64 +200,68 @@ function buyPassive(groupId, userId, value, quantity = 1) {
   if (!Number.isInteger(cleanQuantity) || cleanQuantity <= 0) return { ok: false, error: 'invalid' };
 
   const db = loadDB();
-  const item = findItem(db, value);
-  if (!item) return { ok: false, error: 'item' };
-  if (item.stock < cleanQuantity) return { ok: false, error: 'stock', item };
+  const type = findItemType(db, value);
+  if (!type) return { ok: false, error: 'item' };
+  if (type.stock < cleanQuantity) return { ok: false, error: 'stock', item: type };
 
-  const price = item.income * 100 * cleanQuantity;
+  const price = type.income * 100 * cleanQuantity;
   const user = ensureUser(db, groupId, userId);
-  if (user.wallet < price) return { ok: false, error: 'funds', item, price };
+  if (user.wallet < price) return { ok: false, error: 'funds', item: type, price };
+
+  const created = [];
+  for (let i = 0; i < cleanQuantity; i += 1) {
+    const itemId = generateUniqueItemId(db);
+    user.passiveItems[itemId] = {
+      typeCode: type.typeCode,
+      acquiredAt: Date.now(),
+    };
+    created.push(itemId);
+  }
 
   user.wallet -= price;
-  item.stock -= cleanQuantity;
-  user.passiveItems[item.code] = (Number(user.passiveItems[item.code]) || 0) + cleanQuantity;
+  type.stock -= cleanQuantity;
   saveDB(db);
-  return { ok: true, item, quantity: cleanQuantity, price, user };
+  return { ok: true, item: type, quantity: cleanQuantity, price, itemIds: created, user };
 }
 
 function getInventory(groupId, userId) {
   syncPassiveIncome();
   const db = loadDB();
   const user = ensureUser(db, groupId, userId);
-  return { user, items: db._v050.items.filter((item) => (Number(user.passiveItems[item.code]) || 0) > 0) };
+  const items = getAllOwnedItems(user).map((instance) => ({
+    id: Object.keys(user.passiveItems).find((key) => user.passiveItems[key] === instance),
+    ...instance,
+    type: db._v050.items.find((entry) => String(entry.typeCode) === String(instance.typeCode)),
+  })).filter((entry) => entry.type);
+  return { user, items };
 }
 
-function sellToHall(groupId, userId, value, price) {
+function sellToHall(groupId, userId, itemId, price) {
   syncPassiveIncome();
   const cleanPrice = Number(price);
   if (!Number.isInteger(cleanPrice) || cleanPrice <= 0) return { ok: false, error: 'price' };
 
   const db = loadDB();
-  const item = findItem(db, value);
-  if (!item) return { ok: false, error: 'item' };
   const user = ensureUser(db, groupId, userId);
-  const owned = Number(user.passiveItems[item.code]) || 0;
-  if (owned < 1) return { ok: false, error: 'owned', item };
+  const owned = findOwnedItem(db, user, itemId);
+  if (!owned) return { ok: false, error: 'owned' };
 
-  let code = Number(db._v050.nextTradingCode) || 5000;
-  const used = new Set(Object.keys(db._v050.tradingHall));
-  while (used.has(String(code))) {
-    code += 1;
-    if (code > 9999) code = 5000;
-  }
-  db._v050.nextTradingCode = code + 1 > 9999 ? 5000 : code + 1;
-
-  user.passiveItems[item.code] = owned - 1;
-  if (user.passiveItems[item.code] <= 0) delete user.passiveItems[item.code];
-
-  db._v050.tradingHall[String(code)] = {
-    code: String(code),
-    itemCode: item.code,
-    itemName: item.name,
-    income: item.income,
+  const listingCode = owned.id;
+  db._v050.tradingHall[listingCode] = {
+    code: listingCode,
+    itemId: listingCode,
+    typeCode: owned.type.typeCode,
+    itemName: owned.type.name,
+    income: owned.type.income,
     seller: userId,
     groupId,
     price: cleanPrice,
     listedAt: Date.now(),
   };
 
+  delete user.passiveItems[listingCode];
   saveDB(db);
-  return { ok: true, listing: db._v050.tradingHall[String(code)], item };
+  return { ok: true, listing: db._v050.tradingHall[listingCode], item: owned.type };
 }
 
 function getListings(groupId) {
@@ -227,7 +273,8 @@ function getListings(groupId) {
 function buyFromHall(groupId, userId, listingCode) {
   syncPassiveIncome();
   const db = loadDB();
-  const listing = db._v050.tradingHall[String(listingCode).trim()];
+  const code = String(listingCode || '').trim();
+  const listing = db._v050.tradingHall[code];
   if (!listing || listing.groupId !== groupId) return { ok: false, error: 'listing' };
   if (listing.seller === userId) return { ok: false, error: 'self' };
 
@@ -237,8 +284,11 @@ function buyFromHall(groupId, userId, listingCode) {
   const seller = ensureUser(db, groupId, listing.seller);
   buyer.wallet -= listing.price;
   seller.wallet += listing.price;
-  buyer.passiveItems[listing.itemCode] = (Number(buyer.passiveItems[listing.itemCode]) || 0) + 1;
-  delete db._v050.tradingHall[String(listingCode).trim()];
+  buyer.passiveItems[listing.itemId] = {
+    typeCode: listing.typeCode,
+    acquiredAt: Date.now(),
+  };
+  delete db._v050.tradingHall[code];
   saveDB(db);
 
   return { ok: true, listing, buyer, seller };
