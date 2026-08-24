@@ -1,14 +1,8 @@
 /**
  * Pairing-code launcher for tkbot.
  *
- * Set PAIRING_NUMBER to the WhatsApp number that should be linked,
- * including country code and digits only.
- *
- * Example:
- *   PAIRING_NUMBER=66812345678
- *
- * This launcher keeps the normal index.js startup intact, but replaces
- * QR display with a WhatsApp pairing code on first login.
+ * The pairing number defaults to the configured owner number so Railway
+ * does not need a separate PAIRING_NUMBER variable.
  */
 
 const Module = require('module');
@@ -17,11 +11,11 @@ const config = require('./config');
 const pairingNumber = String(
   process.env.PAIRING_NUMBER ||
   (Array.isArray(config.ownerNumber) ? config.ownerNumber[0] : config.ownerNumber) ||
-  ''
+  '66821625733'
 ).replace(/\D/g, '');
 
 if (!/^\d{7,15}$/.test(pairingNumber)) {
-  console.error('❌ Invalid PAIRING_NUMBER. Set it to your WhatsApp number with country code, digits only.');
+  console.error('❌ Invalid pairing number. Set PAIRING_NUMBER to your WhatsApp number with country code, digits only.');
   process.exit(1);
 }
 
