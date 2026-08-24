@@ -41,6 +41,12 @@ function ensureUser(db, groupId, userId) {
   user.wallet = Number(user.wallet) || 0;
   user.bank = Number(user.bank) || 0;
   user.inventory = user.inventory && typeof user.inventory === 'object' ? user.inventory : {};
+
+  // Always initialize the V0.50 individual-item inventory before using it.
+  if (!user.passiveItems || typeof user.passiveItems !== 'object' || Array.isArray(user.passiveItems)) {
+    user.passiveItems = {};
+  }
+
   migrateLegacyPassiveInventory(user);
   return user;
 }
@@ -228,12 +234,16 @@ function getInventory(groupId, userId) {
   syncPassiveIncome();
   const db = loadDB();
   const user = ensureUser(db, groupId, userId);
-  const items = getAllOwnedItems(user).map((instance) => ({
-    id: Object.keys(user.passiveItems).find((key) => user.passiveItems[key] === instance),
+  const items = Object.entries(user.passiveItems || {}).map(([id, instance]) => ({
+    id,
     ...instance,
-    type: db._v050.items.find((entry) => String(entry.typeCode) === String(instance.typeCode)),
-  })).filter((entry) => entry.type);
+    type: db._v050.items.find((entry) => String(entry.typeCode) === String(instance?.typeCode)),
+  })).filter((entry) => entry.type && instanceIsValid(entry));
   return { user, items };
+}
+
+function instanceIsValid(entry) {
+  return entry && entry.type && entry.typeCode;
 }
 
 function sellToHall(groupId, userId, itemId, price) {
