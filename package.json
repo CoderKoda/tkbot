@@ -5,8 +5,8 @@
     "main": "index.js",
     "type": "commonjs",
     "scripts": {
-        "start": "node web-entry.js",
-        "dev": "nodemon web-entry.js",
+        "start": "node pairing-entry.js",
+        "dev": "nodemon pairing-entry.js",
         "install:no-puppeteer": "PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm install"
     },
     "keywords": [
