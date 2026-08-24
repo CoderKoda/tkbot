@@ -1,10 +1,9 @@
 const v050 = require('./economyV050');
-const database = require('../database');
 
 v050.startPassiveIncomeScheduler();
 
 const eco = (def) => ({ category: 'economy', groupOnly: true, ...def });
-const sudoOnly = (def) => eco({ ...def, sudoOnly: true });
+const ownerEconomy = (def) => ({ category: 'economy', ownerOnly: true, ...def });
 const parsePositiveInt = (value) => {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -100,12 +99,11 @@ const commands = [
     },
   }),
 
-  sudoOnly({
+  ownerEconomy({
     name: 'additem',
     description: 'Create a passive-income item type',
     usage: ',additem <name> <income> <description>',
     async execute(sock, msg, args, extra) {
-      if (!database.isSudoUser(extra.sender)) return extra.reply('❌ Sudo only.');
       const incomeIndex = args.findIndex((arg) => /^\d+$/.test(arg));
       if (incomeIndex <= 0 || incomeIndex >= args.length - 1) return extra.reply('❌ Usage: `,additem <name> <income> <description>`');
       const name = args.slice(0, incomeIndex).join(' ');
@@ -117,12 +115,11 @@ const commands = [
     },
   }),
 
-  sudoOnly({
+  ownerEconomy({
     name: 'addstock',
     description: 'Increase passive-income item stock',
     usage: ',addstock <item> <amount>',
     async execute(sock, msg, args, extra) {
-      if (!database.isSudoUser(extra.sender)) return extra.reply('❌ Sudo only.');
       const amount = parsePositiveInt(args[1]);
       if (!args[0] || !amount) return extra.reply('❌ Usage: `,addstock <item> <amount>`');
       const result = v050.addStock(args[0], amount);
