@@ -5,6 +5,8 @@
  * does not need a separate PAIRING_NUMBER variable.
  */
 
+const fs = require('fs');
+const path = require('path');
 const Module = require('module');
 const config = require('./config');
 
@@ -16,6 +18,24 @@ const pairingNumber = String(
 
 if (!/^\d{7,15}$/.test(pairingNumber)) {
   console.error('❌ Invalid pairing number. Set PAIRING_NUMBER to your WhatsApp number with country code, digits only.');
+  process.exit(1);
+}
+
+// One-time clean-login reset. The marker is created outside the session
+// directory so the newly generated credentials are preserved on restarts.
+const sessionDir = path.resolve(`./${config.sessionName}`);
+const resetMarker = path.resolve('.pairing-reset-complete');
+
+try {
+  if (!fs.existsSync(resetMarker)) {
+    if (fs.existsSync(sessionDir)) {
+      fs.rmSync(sessionDir, { recursive: true, force: true });
+      console.log('🧹 Cleared existing WhatsApp session for a clean login.');
+    }
+    fs.writeFileSync(resetMarker, new Date().toISOString(), 'utf8');
+  }
+} catch (error) {
+  console.error('❌ Failed to clear the previous WhatsApp session:', error?.message || error);
   process.exit(1);
 }
 
