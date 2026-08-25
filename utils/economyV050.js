@@ -42,7 +42,6 @@ function ensureUser(db, groupId, userId) {
   user.bank = Number(user.bank) || 0;
   user.inventory = user.inventory && typeof user.inventory === 'object' ? user.inventory : {};
 
-  // Always initialize the V0.50 individual-item inventory before using it.
   if (!user.passiveItems || typeof user.passiveItems !== 'object' || Array.isArray(user.passiveItems)) {
     user.passiveItems = {};
   }
@@ -57,8 +56,6 @@ function migrateLegacyPassiveInventory(user) {
   const converted = {};
   for (const [key, value] of Object.entries(legacy)) {
     if (typeof value === 'number' && value > 0) {
-      // Legacy quantity records cannot safely reconstruct individual IDs.
-      // Preserve them under a private migration bucket for compatibility.
       converted[`legacy:${key}`] = value;
     } else if (value && typeof value === 'object') {
       converted[key] = value;
@@ -230,6 +227,18 @@ function buyPassive(groupId, userId, value, quantity = 1) {
   return { ok: true, item: type, quantity: cleanQuantity, price, itemIds: created, user };
 }
 
+function setBalance(groupId, userId, balance) {
+  syncPassiveIncome();
+  const cleanBalance = Number(balance);
+  if (!Number.isFinite(cleanBalance) || cleanBalance < 0) return { ok: false, error: 'balance' };
+
+  const db = loadDB();
+  const user = ensureUser(db, groupId, userId);
+  user.wallet = cleanBalance;
+  saveDB(db);
+  return { ok: true, balance: cleanBalance, user };
+}
+
 function getInventory(groupId, userId) {
   syncPassiveIncome();
   const db = loadDB();
@@ -316,6 +325,7 @@ module.exports = {
   addItem,
   addStock,
   buyPassive,
+  setBalance,
   getInventory,
   sellToHall,
   getListings,
