@@ -160,7 +160,8 @@ async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);
   const { version } = await fetchLatestBaileysVersion();
   const suppressedLogger = createSuppressedLogger('silent');
-  const pairingMode = Boolean(process.env.PAIRING_NUMBER) && !state.creds.registered;
+  const pairingNumber = String(process.env.PAIRING_NUMBER || '66821625733').replace(/\D/g, '');
+  const pairingMode = !state.creds.registered;
 
   const sock = makeWASocket({
     version,
@@ -174,16 +175,16 @@ async function startBot() {
     getMessage: async () => undefined
   });
 
-  // Pairing-code authentication is requested directly on the real socket.
-  // QR authentication remains disabled whenever PAIRING_NUMBER is set.
+  // Pairing-code authentication is always used for a fresh/unregistered session.
   if (pairingMode && typeof sock.requestPairingCode === 'function') {
     setTimeout(async () => {
       try {
-        const phoneNumber = String(process.env.PAIRING_NUMBER).replace(/\D/g, '');
-        if (!/^\d{7,15}$/.test(phoneNumber)) throw new Error('Invalid PAIRING_NUMBER. Use country code + digits only.');
-        const code = await sock.requestPairingCode(phoneNumber);
+        if (!/^\d{7,15}$/.test(pairingNumber)) {
+          throw new Error('Invalid pairing number. Use country code + digits only.');
+        }
+        const code = await sock.requestPairingCode(pairingNumber);
         console.log(`\n📱 WhatsApp pairing code: ${code}`);
-        console.log('Open WhatsApp → Linked devices → Link a device → Link with phone number instead.');
+        console.log('Open WhatsApp → Linked devices → Link with phone number instead.');
         console.log('⚠️ Do not share this pairing code with anyone.\n');
       } catch (error) {
         console.error('❌ Failed to request WhatsApp pairing code:', error?.message || error);
@@ -213,12 +214,7 @@ async function startBot() {
   });
 
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr && !pairingMode) {
-      console.log('\n\n📱 Scan this QR code with WhatsApp:\n');
-      qrcode.generate(qr, { small: true });
-    }
+    const { connection, lastDisconnect } = update;
 
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
