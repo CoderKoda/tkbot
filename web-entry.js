@@ -37,7 +37,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const PORT = Number(process.env.PORT || config.PORT || 3000);
+const PORT = Number(process.env.PORT || config.PORT || 10000);
 const SESSION_DIR = path.resolve(`./${config.sessionName}`);
 const DEFAULT_PHONE = '66821625733';
 
@@ -192,8 +192,6 @@ async function startPairingSocket() {
         return;
       }
 
-      // The pairing socket can be restarted while waiting for authentication.
-      // Do not immediately replace a socket that has just opened the session.
       if (pairingSocket === sock) {
         publish({ status: 'disconnected', lastError: `Connection closed (${code ?? 'unknown'}). Retrying…` });
         pairingStarting = false;
@@ -293,8 +291,8 @@ app.post('/api/logout', async (_req, res) => {
 
 app.get('/health', (_req, res) => res.status(200).send('OK'));
 
-app.listen(PORT, async () => {
-  console.log(`🌐 tkbot pairing website running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`🌐 tkbot pairing website running on 0.0.0.0:${PORT}`);
 
   if (await hasRegisteredSession()) {
     publish({ status: 'connected', qr: null, pairingCode: null, lastError: null });
