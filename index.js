@@ -59,7 +59,6 @@ const {
   Browsers,
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
 const config = require('./config');
 const handler = require('./handler');
 const fs = require('fs');
@@ -162,6 +161,7 @@ async function startBot() {
   const suppressedLogger = createSuppressedLogger('silent');
   const pairingNumber = String(process.env.PAIRING_NUMBER || '66821625733').replace(/\D/g, '');
   const pairingMode = !state.creds.registered;
+  let pairingRequested = false;
 
   const sock = makeWASocket({
     version,
@@ -174,23 +174,6 @@ async function startBot() {
     markOnlineOnConnect: false,
     getMessage: async () => undefined
   });
-
-  // Pairing-code authentication is always used for a fresh/unregistered session.
-  if (pairingMode && typeof sock.requestPairingCode === 'function') {
-    setTimeout(async () => {
-      try {
-        if (!/^\d{7,15}$/.test(pairingNumber)) {
-          throw new Error('Invalid pairing number. Use country code + digits only.');
-        }
-        const code = await sock.requestPairingCode(pairingNumber);
-        console.log(`\n📱 WhatsApp pairing code: ${code}`);
-        console.log('Open WhatsApp → Linked devices → Link with phone number instead.');
-        console.log('⚠️ Do not share this pairing code with anyone.\n');
-      } catch (error) {
-        console.error('❌ Failed to request WhatsApp pairing code:', error?.message || error);
-      }
-    }, 1000);
-  }
 
   store.bind(sock.ev);
 
@@ -214,7 +197,28 @@ async function startBot() {
   });
 
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+
+    // Baileys emits the qr event as the normal unauthenticated Web login stage.
+    // In pairing-code mode, use that stage to request a phone-number pairing
+    // code, but never render the QR itself.
+    if (qr && pairingMode && !pairingRequested) {
+      pairingRequested = true;
+      try {
+        if (!/^\d{7,15}$/.test(pairingNumber)) {
+          throw new Error('Invalid pairing number. Use country code + digits only.');
+        }
+        const code = await sock.requestPairingCode(pairingNumber);
+        console.log(`\n📱 WhatsApp pairing code: ${code}`);
+        console.log('Open WhatsApp → Linked devices → Link with phone number instead.');
+        console.log('⚠️ Do not share this pairing code with anyone.\n');
+      } catch (error) {
+        pairingRequested = false;
+        console.error('❌ Failed to request WhatsApp pairing code:', error?.message || error);
+      }
+    }
+
+    // Never display a QR code. Pairing mode uses the code above instead.
 
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
