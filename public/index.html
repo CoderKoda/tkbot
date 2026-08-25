@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tkbot — Connect WhatsApp</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="card">
+      <div class="brand">tkbot</div>
+      <h1>Connect WhatsApp</h1>
+      <p class="subtitle">Choose how you want to link your WhatsApp account.</p>
+
+      <div id="screen-entry" class="screen">
+        <button id="use-qr" class="primary">Scan QR code</button>
+        <div class="divider"><span>or</span></div>
+        <label for="phone">Phone number</label>
+        <input id="phone" inputmode="numeric" autocomplete="tel" placeholder="66821625733">
+        <button id="submit" class="secondary">Use phone number</button>
+        <p id="entry-error" class="error" hidden></p>
+        <p class="hint">Use your full international number, without +, spaces, or punctuation.</p>
+      </div>
+
+      <div id="screen-qr" class="screen" hidden>
+        <div class="status" id="qr-status-line">Waiting for QR code…</div>
+        <div class="qr-wrap"><img id="qr-image" alt="WhatsApp QR code"></div>
+        <p class="hint">WhatsApp → Settings → Linked devices → Link a device.</p>
+        <button id="back-qr" class="link">Back</button>
+      </div>
+
+      <div id="screen-code" class="screen" hidden>
+        <div class="status" id="code-status-line">Enter this code in WhatsApp.</div>
+        <div id="code" class="code">--------</div>
+        <p class="hint">WhatsApp → Settings → Linked devices → Link with phone number instead.</p>
+        <button id="back-code" class="link">Back</button>
+      </div>
+
+      <div id="screen-connecting" class="screen" hidden>
+        <div class="spinner"></div>
+        <div class="status">Connecting…</div>
+        <p id="connecting-error" class="error" hidden></p>
+      </div>
+
+      <div id="screen-connected" class="screen" hidden>
+        <div class="success">✓</div>
+        <h2>Connected</h2>
+        <p class="subtitle">tkbot is linked to WhatsApp.</p>
+      </div>
+
+      <div id="footer-status" class="footer">status: idle</div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
