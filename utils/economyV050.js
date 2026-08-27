@@ -207,7 +207,7 @@ function buyPassive(groupId, userId, value, quantity = 1) {
   if (!type) return { ok: false, error: 'item' };
   if (type.stock < cleanQuantity) return { ok: false, error: 'stock', item: type };
 
-  const price = type.income * 100 * cleanQuantity;
+  const price = type.income * 10 * cleanQuantity;
   const user = ensureUser(db, groupId, userId);
   if (user.wallet < price) return { ok: false, error: 'funds', item: type, price };
 
