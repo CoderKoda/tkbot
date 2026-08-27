@@ -5,10 +5,10 @@ const DB_PATH = path.join(__dirname, '..', 'database', 'economy.json');
 const HOUR = 60 * 60 * 1000;
 
 const DEFAULT_ITEMS = [
-  { typeCode: '1001', name: 'RaspberryPi', income: 25, stock: 10, description: 'A small computer that generates passive income.' },
-  { typeCode: '1002', name: 'Laptop', income: 100, stock: 10, description: 'A portable computer with a stronger passive income stream.' },
-  { typeCode: '1003', name: 'Miner', income: 500, stock: 10, description: 'A dedicated mining machine with high passive income.' },
-  { typeCode: '1004', name: 'Server', income: 1000, stock: 10, description: 'A powerful server producing the maximum starter income.' },
+  { typeCode: '1001', name: 'RaspberryPi', income: 25, stock: 50, description: 'A small computer that generates passive income.' },
+  { typeCode: '1002', name: 'Laptop', income: 100, stock: 40, description: 'A portable computer with a stronger passive income stream.' },
+  { typeCode: '1003', name: 'Miner', income: 500, stock: 30, description: 'A dedicated mining machine with high passive income.' },
+  { typeCode: '1004', name: 'Server', income: 1000, stock: 20, description: 'A powerful server producing the maximum starter income.' },
 ];
 
 function loadDB() {
