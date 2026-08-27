@@ -19,7 +19,7 @@ const commands = [
       const items = v050.getItems();
       const inv = v050.getInventory(extra.from, extra.sender);
       const shopLines = items.map((item) =>
-        `• *${item.name}* — ${v050.formatCoins(item.income)}/hr — ${v050.formatCoins(item.income * 100)} 🪙 — stock: ${item.stock}\n  ${item.description}`
+        `• *${item.name}* — ${v050.formatCoins(item.income)}/hr — ${v050.formatCoins(item.income * 10)} 🪙 — stock: ${item.stock}\n  ${item.description}`
       );
       const ownedLines = inv.items.length
         ? inv.items.map((entry) => `• \`${entry.id}\` *${entry.type.name}* — ${v050.formatCoins(entry.type.income)}/hr`).join('\n')
@@ -111,7 +111,7 @@ const commands = [
       const description = args.slice(incomeIndex + 1).join(' ');
       const result = v050.addItem(name, income, description);
       if (!result.ok) return extra.reply(result.error === 'exists' ? '❌ An item with that name already exists.' : '❌ Invalid item data.');
-      return extra.reply(`✅ Created *${result.item.name}*.\nType ID: \`${result.item.typeCode}\`\nIncome: *${result.item.income}/hr*\nPrice: *${v050.formatCoins(result.item.income * 100)}* 🪙\nStock: *0*`);
+      return extra.reply(`✅ Created *${result.item.name}*.\nType ID: \`${result.item.typeCode}\`\nIncome: *${result.item.income}/hr*\nPrice: *${v050.formatCoins(result.item.income * 10)}* 🪙\nStock: *0*`);
     },
   }),
 
