@@ -13,22 +13,39 @@ const commands = [
   eco({
     name: 'passive',
     aliases: ['passiveincome', 'passives'],
-    description: 'View passive-income items and your individual item IDs',
+    description: 'View passive-income shop',
     usage: ',passive',
     async execute(sock, msg, args, extra) {
       const items = v050.getItems();
-      const inv = v050.getInventory(extra.from, extra.sender);
       const shopLines = items.map((item) =>
         `• *${item.name}* — ${v050.formatCoins(item.income)}/hr — ${v050.formatCoins(item.income * 10)} 🪙 — stock: ${item.stock}\n  ${item.description}`
       );
-      const ownedLines = inv.items.length
-        ? inv.items.map((entry) => `• \`${entry.id}\` *${entry.type.name}* — ${v050.formatCoins(entry.type.income)}/hr`).join('\n')
-        : 'None';
       return extra.reply(
         `💼 *Passive Income Shop*\n\n${shopLines.join('\n\n')}\n\n` +
-        `Your individual items:\n${ownedLines}\n\n` +
         `Income is credited automatically at every :00 hour.\n` +
         `Buy with \,buy <item name> [quantity]`
+      );
+    },
+  }),
+
+  eco({
+    name: 'inv',
+    aliases: ['inventory', 'items'],
+    description: 'View your passive-income inventory and item IDs',
+    usage: ',inv',
+    async execute(sock, msg, args, extra) {
+      const inv = v050.getInventory(extra.from, extra.sender);
+      if (!inv.items.length) {
+        return extra.reply('🎒 *Your inventory*\n\nYou do not own any passive-income items.');
+      }
+
+      const lines = inv.items.map((entry) =>
+        `• \`${entry.id}\` *${entry.type.name}* — ${v050.formatCoins(entry.type.income)} coins/hour`
+      );
+
+      return extra.reply(
+        `🎒 *Your Inventory*\n\n${lines.join('\n')}\n\n` +
+        `Use the individual item ID for Trading Hall actions.`
       );
     },
   }),
@@ -80,7 +97,7 @@ const commands = [
         if (!args[1] || !price) return extra.reply('❌ Usage: `,tradinghall sell <itemID> <price>`');
         const result = v050.sellToHall(extra.from, extra.sender, args[1], price);
         if (!result.ok) {
-          if (result.error === 'owned') return extra.reply('❌ You do not own that individual item ID. Use `,passive` to see your IDs.');
+          if (result.error === 'owned') return extra.reply('❌ You do not own that individual item ID. Use `,inv` to see your IDs.');
           return extra.reply('❌ Invalid price.');
         }
         return extra.reply(`🏷️ Listed *${result.item.name}* (ID \`${result.listing.itemId}\`) for *${v050.formatCoins(price)}* 🪙.`);
