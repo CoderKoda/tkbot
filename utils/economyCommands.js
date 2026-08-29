@@ -47,8 +47,8 @@ const economyCommands = [
       if (result.error === 'invalid_wager') return extra.reply('❌ Wager must be a positive whole number.');
       return extra.reply(`⏳ Lay low for *${formatWait(result.waitMs)}* before crime again.`);
     }
-    if (result.success) return extra.reply(`🕵️ *Crime successful!*\n\nYou won *${fmtCoins(result.wager)}* 🪙.\nWager: *${fmtCoins(result.wager)}* 🪙\n\n${walletLine(result.user)}${levelNotice(result.levelResult)}`);
-    return extra.reply(`🚔 *Busted!*\n\nYou lost your wager of *${fmtCoins(result.wager)}* 🪙.\n\n${walletLine(result.user)}`);
+    if (result.success) return extra.reply(`🕵️ *Crime successful!*\n\nWager: *${fmtCoins(result.wager)}* 🪙\nWon: *+${fmtCoins(result.amount)}* 🪙\n\n${walletLine(result.user)}${levelNotice(result.levelResult)}`);
+    return extra.reply(`🚔 *Busted!*\n\nWager: *${fmtCoins(result.wager)}* 🪙\nLost: *-${fmtCoins(result.amount)}* 🪙\n\n${walletLine(result.user)}`);
   } }),
   makeEcoCmd({ name: 'mine', aliases: ['dig'], description: 'Mine coins — chance for diamonds (1.5h cooldown)', usage: ',mine', async execute(sock, msg, args, extra) { const result = doMine(extra.from, extra.sender); if (!result.ok) return extra.reply(`⏳ Rest your pickaxe. Mine again in *${formatWait(result.waitMs)}*.`); let text = `⛏️ *Mining complete!*\n\nFound *${fmtCoins(result.amount)}* coins.`; if (result.diamonds) text += `\nBonus: *+${result.diamonds}* 💎`; return extra.reply(`${text}\n\n${walletLine(result.user)}${levelNotice(result.levelResult)}`); } }),
   makeEcoCmd({ name: 'balance', aliases: ['bal', 'wallet'], description: 'Check wallet, bank, diamonds & level', usage: ',balance [@user]', async execute(sock, msg, args, extra) { const { jid } = getTargetUser(msg, extra); const user = getUserData(extra.from, jid); const isSelf = jid === extra.sender; const inv = inventorySummary(user.inventory); const text = `${isSelf ? '💼 *Your profile*' : `💼 *${tag(jid)}* profile`}\n\n${walletLine(user)}\nItems: ${inv}`; return isSelf ? extra.reply(text) : sendMention(sock, msg, extra, text, [jid]); } }),
